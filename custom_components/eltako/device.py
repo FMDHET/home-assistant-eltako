@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import DATA_ENTITY_PLATFORM
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, dispatcher_send
 from homeassistant.helpers.entity import Entity
+from homeassistant.helpers import area_registry as ar, device_registry as dr
 from homeassistant.const import Platform
 
 from .const import *
@@ -87,6 +88,12 @@ class EltakoEntity(Entity):
             )
         )
 
+        # Force-assign the device to the configured area. suggested_area on
+        # DeviceInfo is only honored on initial device creation, so for
+        # devices that already exist in the registry we update them here.
+        if self._attr_dev_area:
+            self._assign_device_to_area(self._attr_dev_area)
+
         # load initial value
         if isinstance(self, RestoreEntity):
             # check if value is not set
@@ -99,6 +106,19 @@ class EltakoEntity(Entity):
                 latest_state:State = await self.async_get_last_state()
                 if latest_state is not None:
                     self.load_value_initially(latest_state)
+
+    def _assign_device_to_area(self, area_name: str) -> None:
+        """Ensure the configured area exists and link this entity's device to it."""
+        area_reg = ar.async_get(self.hass)
+        area = area_reg.async_get_area_by_name(area_name)
+        if area is None:
+            area = area_reg.async_create(area_name)
+
+        device_reg = dr.async_get(self.hass)
+        device = device_reg.async_get_device(identifiers={(DOMAIN, b2s(self.dev_id))})
+        if device is not None and device.area_id != area.id:
+            device_reg.async_update_device(device.id, area_id=area.id)
+            LOGGER.debug(f"[{self._attr_ha_platform} {self.dev_id}] Assigned device to area '{area_name}' (id={area.id}).")
 
 
     def load_value_initially(self, latest_state:State):
