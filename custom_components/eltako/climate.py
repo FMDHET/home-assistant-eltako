@@ -113,8 +113,8 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
     _attr_preset_modes = None
     _attr_swing_mode = None
     _attr_swing_modes = None
-    _attr_current_temperature = 0
-    _attr_target_temperature = 0
+    _attr_current_temperature = None
+    _attr_target_temperature = None
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
     _attr_preset_modes = [PRESET_HOME, # normal mode
                             PRESET_SLEEP, # night set back -4°K

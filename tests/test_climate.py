@@ -48,8 +48,8 @@ class TestClimate(unittest.TestCase):
         self.assertEqual(cc.hvac_mode, HVACMode.OFF)
         self.assertEqual(cc._attr_actuator_mode, A5_10_06.HeaterMode.NORMAL)
 
-        self.assertEqual(cc.target_temperature, 0)
-        self.assertEqual(cc.current_temperature, 0)
+        self.assertIsNone(cc.target_temperature)
+        self.assertIsNone(cc.current_temperature)
 
         mode = A5_10_06.HeaterMode.NORMAL
         target_temp = 24
@@ -81,8 +81,8 @@ class TestClimate(unittest.TestCase):
         self.assertEqual(cc.hvac_mode, HVACMode.OFF)
         self.assertEqual(cc._attr_actuator_mode, A5_10_06.HeaterMode.NORMAL)
 
-        self.assertEqual(cc.target_temperature, 0)
-        self.assertEqual(cc.current_temperature, 0)
+        self.assertIsNone(cc.target_temperature)
+        self.assertIsNone(cc.current_temperature)
 
         mode = A5_10_06.HeaterMode.NORMAL
         target_temp = 24
@@ -112,8 +112,8 @@ class TestClimate(unittest.TestCase):
         self.assertEqual(cc.hvac_mode, HVACMode.OFF)
         self.assertEqual(cc._attr_actuator_mode, A5_10_06.HeaterMode.NORMAL)
 
-        self.assertEqual(cc.target_temperature, 0)
-        self.assertEqual(cc.current_temperature, 0)
+        self.assertIsNone(cc.target_temperature)
+        self.assertIsNone(cc.current_temperature)
 
         #0x70 = 3
         msg = F6_02_01(3, 1, 0, 0).encode_message(b'\xFF\xFF\xFF\x01')
@@ -168,8 +168,8 @@ class TestClimateAsync(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cc.hvac_mode, HVACMode.OFF)
         self.assertEqual(cc._attr_actuator_mode, A5_10_06.HeaterMode.NORMAL)
 
-        self.assertEqual(cc.target_temperature, 0)
-        self.assertEqual(cc.current_temperature, 0)
+        self.assertIsNone(cc.target_temperature)
+        self.assertIsNone(cc.current_temperature)
 
         #0x70 = 3
         msg = F6_02_01(3, 1, 0, 0).encode_message(b'\xFF\xFF\xFF\x01')
