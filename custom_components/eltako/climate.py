@@ -488,9 +488,9 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
             elif decoded.mode == A5_10_06.HeaterMode.NIGHT_SET_BACK_4_DEGREES:
                 self._attr_preset_mode = PRESET_SLEEP
 
-            if decoded.mode != A5_10_06.HeaterMode.OFF:
+            # if decoded.mode != A5_10_06.HeaterMode.OFF:
                 # show target temp in 0.5 steps
-                self._attr_target_temperature =  round( 2*decoded.target_temperature, 0)/2
+            self._attr_target_temperature =  round( 2*decoded.target_temperature, 0)/2
 
             # When off_temperature is configured, reaching that target means the actuator is off.
             if self.off_temperature is not None and self._attr_target_temperature == self.off_temperature:
