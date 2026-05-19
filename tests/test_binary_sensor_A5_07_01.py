@@ -22,12 +22,12 @@ class TestBinarySensor_A5_07_01(unittest.TestCase):
 
         self.assertEqual(bs._attr_is_on, None)
 
-        msg = Regular4BSMessage(address=b'\x00\x00\x10\x08', data=b'\x00\x96\xC8\x09', status=b'\x00')
+        msg = Regular4BSMessage(address=b'\x00\x00\x10\x08', data=b'\x00\x96\x01\x09', status=b'\x00', outgoing=True)
 
         bs.value_changed(msg)
         self.assertEqual(bs._attr_is_on, True)
 
-        msg.data = b'\x00\x96\x0A\x09'
+        msg.data = b'\x00\x96\x00\x09'
         bs.value_changed(msg)
         self.assertEqual(bs._attr_is_on, False)
 

@@ -42,7 +42,7 @@ class TestBinarySensor_F6_02_01(unittest.TestCase):
         bs.value_changed(msg)
         
         # test if processing was finished and event arrived on bus
-        self.assertEqual(len(bs.hass.bus.fired_events), 2)
+        self.assertEqual(len(bs.hass.bus.fired_events), 1)
         self.assertEqual(bs._attr_is_on, True)
 
         expexced_event_type = 'eltako_btn_pressed_fe_db_b6_40'
@@ -53,15 +53,19 @@ class TestBinarySensor_F6_02_01(unittest.TestCase):
         self.assertEqual(fired_event_0['event_type'], get_bus_event_type(bs.gateway.dev_id, EVENT_BUTTON_PRESSED, msg.address))
         self.assertEqual(fired_event_0['event_type'], expexced_event_type)
 
-        # check button specific event
-        fired_event_1 = bs.hass.bus.fired_events[1]
-        self.assertEqual(fired_event_1['event_type'], get_bus_event_type(bs.gateway.dev_id, EVENT_BUTTON_PRESSED, msg.address, "RT"))
-        self.assertEqual(fired_event_1['event_type'], expexced_event_type + '_rt')
+        # # check button specific event
+        # second event was removed
+        # fired_event_1 = bs.hass.bus.fired_events[1]
+        # self.assertEqual(fired_event_1['event_type'], get_bus_event_type(bs.gateway.dev_id, EVENT_BUTTON_PRESSED, msg.address, "RT"))
+        # self.assertEqual(fired_event_1['event_type'], expexced_event_type + '_rt')
 
         # check event data
         expected_data = {
-            'id': 'eltako_btn_pressed_fe_db_b6_40_rt', 
+            'id': 'eltako_btn_pressed_fe_db_b6_40', 
+            'entity_id': 'binary_sensor.eltako_gw_123_00_00_00_01',
             'data': 112,
+            'eep': 'F6-02-01',
+            'switch_address': 'FE-DB-B6-40',
             'pressed': True,
             'pressed_buttons': ['RT'],
             'push_duration_in_sec': -1,
@@ -70,12 +74,14 @@ class TestBinarySensor_F6_02_01(unittest.TestCase):
             'rocker_first_action': 3,
             'rocker_second_action': 0,
             'switch_address': 'FE-DB-B6-40',
-            'two_buttons_pressed': False}
+            'two_buttons_pressed': False,
+            'is_on': True
+        }
         for k in expected_data:
             if k != 'push_telegram_received_time_in_sec':
-                self.assertEqual(fired_event_1['event_data'][k], expected_data[k])
+                self.assertEqual(fired_event_0['event_data'][k], expected_data[k])
         self.assertTrue('push_telegram_received_time_in_sec' in fired_event_0['event_data'])
-        self.assertTrue(fired_event_1['event_data']['push_telegram_received_time_in_sec'] > 0)
+        self.assertTrue(fired_event_0['event_data']['push_telegram_received_time_in_sec'] > 0)
 
         self.assertEqual(bs._attr_is_on, True)
 
@@ -87,10 +93,12 @@ class TestBinarySensor_F6_02_01(unittest.TestCase):
         bs.value_changed(msg)
 
         # check button specific event
-        fired_event_3 = bs.hass.bus.fired_events[3]
+        fired_event_2 = bs.hass.bus.fired_events[1]
         expected_data = {
-            'id': 'eltako_btn_pressed_fe_db_b6_40_rt', 
+            'id': 'eltako_btn_pressed_fe_db_b6_40', 
+            'entity_id': 'binary_sensor.eltako_gw_123_00_00_00_01',
             'data': 0, 
+            'eep': 'F6-02-01',
             'switch_address': 'FE-DB-B6-40', 
             'pressed_buttons': [], 
             'pressed': False, 
@@ -99,16 +107,18 @@ class TestBinarySensor_F6_02_01(unittest.TestCase):
             'rocker_second_action': 0, 
             'push_telegram_received_time_in_sec': 1729514202.6208754, 
             'release_telegram_received_time_in_sec': 1729514206.3687692, 
-            'push_duration_in_sec': 3.747893810272217}
+            'push_duration_in_sec': 3.747893810272217,
+            'is_on': False
+        }
         for k in expected_data:
             if k not in ['push_telegram_received_time_in_sec', 'release_telegram_received_time_in_sec', 'push_duration_in_sec']:
-                self.assertEqual(fired_event_3['event_data'][k], expected_data[k])
+                self.assertEqual(fired_event_2['event_data'][k], expected_data[k])
         
-        self.assertTrue(fired_event_3['event_data']['push_telegram_received_time_in_sec'] > 0)
-        self.assertTrue(fired_event_3['event_data']['release_telegram_received_time_in_sec'] > 0)
-        self.assertTrue(fired_event_3['event_data']['push_duration_in_sec'] > 0)
-        self.assertTrue(fired_event_3['event_data']['push_telegram_received_time_in_sec'] < fired_event_3['event_data']['release_telegram_received_time_in_sec'])
-        self.assertEqual(fired_event_3['event_data']['release_telegram_received_time_in_sec'] - fired_event_3['event_data']['push_telegram_received_time_in_sec'], fired_event_3['event_data']['push_duration_in_sec'] )
+        self.assertTrue(fired_event_2['event_data']['push_telegram_received_time_in_sec'] > 0)
+        self.assertTrue(fired_event_2['event_data']['release_telegram_received_time_in_sec'] > 0)
+        self.assertTrue(fired_event_2['event_data']['push_duration_in_sec'] > 0)
+        self.assertTrue(fired_event_2['event_data']['push_telegram_received_time_in_sec'] < fired_event_2['event_data']['release_telegram_received_time_in_sec'])
+        self.assertEqual(fired_event_2['event_data']['release_telegram_received_time_in_sec'] - fired_event_2['event_data']['push_telegram_received_time_in_sec'], fired_event_2['event_data']['push_duration_in_sec'] )
 
         self.assertEqual(bs._attr_is_on, False)
 

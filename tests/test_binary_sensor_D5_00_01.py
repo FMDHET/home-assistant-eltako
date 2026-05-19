@@ -24,6 +24,9 @@ class TestBinarySensor_D5_00_01(unittest.TestCase):
         self.assertEqual(bs._attr_is_on, None)       
         
         # test if state is set to no contact
+        bs._attr_is_on = True
+        self.assertEqual(bs._attr_is_on, True)
+
         bs._attr_is_on = False
         self.assertEqual(bs._attr_is_on, False)
 
@@ -33,21 +36,21 @@ class TestBinarySensor_D5_00_01(unittest.TestCase):
         
         # test if signal is processed correctly (switch on)
         bs.value_changed(msg)
-        self.assertEqual(bs._attr_is_on, False)
+        self.assertEqual(bs._attr_is_on, True)
 
         # test if signal is processed correctly (switch on)
         bs.invert_signal = True
         bs.value_changed(msg)
-        self.assertEqual(bs._attr_is_on, True)
+        self.assertEqual(bs._attr_is_on, False)
 
         # test if signal is processed correctly (switch off)
         msg.data = b'\x08'  # closed
         bs.invert_signal = False
         bs.value_changed(msg)
-        self.assertEqual(bs._attr_is_on, True)
+        self.assertEqual(bs._attr_is_on, False)
 
         # test if signal is processed correctly (switch off)
         bs.invert_signal = True
         bs.value_changed(msg)
-        self.assertEqual(bs._attr_is_on, False)
+        self.assertEqual(bs._attr_is_on, True)
 

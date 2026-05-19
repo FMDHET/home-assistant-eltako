@@ -273,7 +273,7 @@ class EltakoBinarySensor(AbstractBinarySensor):
             
             event_data['pressed'] = decoded.contact == 1
             
-            self._attr_is_on = self.invert_signal != decoded.contact == 1
+            self._attr_is_on = self.invert_signal != (decoded.contact == 1)
 
         elif self.dev_eep in [A5_08_01]:
             # Occupancy Sensor
@@ -283,14 +283,14 @@ class EltakoBinarySensor(AbstractBinarySensor):
                 
             event_data['pressed'] = decoded.pir_status == 1
 
-            self._attr_is_on = self.invert_signal != decoded.pir_status == 1
+            self._attr_is_on = self.invert_signal != (decoded.pir_status == 1)
 
         elif self.dev_eep in [A5_07_01]:
             # LOGGER.debug("[Binary Sensor][%s] Received msg for processing eep %s telegram.", b2s(self.dev_id), self.dev_eep.eep_string)
 
             event_data['pressed'] = decoded.pir_status == 1
 
-            self._attr_is_on = self.invert_signal != decoded.pir_status_on == 1
+            self._attr_is_on = self.invert_signal != (decoded.pir_status == 1)
 
         elif self.dev_eep in [A5_30_01]:
 
@@ -349,8 +349,8 @@ class EltakoBinarySensor(AbstractBinarySensor):
         if event_data['pressed_buttons'] == [] and prev_pressed_buttons != []:
             event_data['prev_pressed_buttons'] = prev_pressed_buttons
         # when button released
-        if not event_data['pressed']:
-            push_telegram_received_time = self.LAST_RECEIVED_TELEGRAMS[ b2s(self.dev_id), {'push_telegram_received_time_in_sec': -1}]['push_telegram_received_time_in_sec']
+        if not event_data['pressed'] and self.dev_eep in [F6_02_01, F6_02_02]:
+            push_telegram_received_time = self.LAST_RECEIVED_TELEGRAMS[ b2s(self.dev_id)]['push_telegram_received_time_in_sec']
             release_telegram_received_time = telegram_received_time
             pushed_duration = float(release_telegram_received_time - push_telegram_received_time)
 
