@@ -472,6 +472,7 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
         if  msg.org == 0x07 and self.dev_eep in [A5_10_06]:
 
             self._attr_actuator_mode = decoded.mode
+            print(f"Decoded mode: {decoded.mode}, target temp: {decoded.target_temperature}, current temp: {decoded.current_temperature}, priority: {decoded.priority.description}")
             self._attr_current_temperature = decoded.current_temperature
 
             if decoded.mode == A5_10_06.HeaterMode.OFF:
@@ -490,7 +491,6 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
 
             if decoded.mode != A5_10_06.HeaterMode.OFF:
                 # show target temp in 0.5 steps
-                print(f"[climate {self.dev_id}] Decoded target temperature: {decoded.target_temperature}")
                 self._attr_target_temperature =  round( 2*decoded.target_temperature, 0)/2
 
             # When off_temperature is configured, reaching that target means the actuator is off.
