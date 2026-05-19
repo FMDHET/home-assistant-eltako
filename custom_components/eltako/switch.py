@@ -38,7 +38,7 @@ async def async_setup_entry(
                 dev_conf = DeviceConf(entity_config)
                 sender_config = config_helpers.get_device_conf(entity_config, CONF_SENDER)
 
-                entities.append(EltakoSwitch(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep))
+                entities.append(EltakoSwitch(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep, dev_conf.area))
             
             except Exception as e:
                 LOGGER.warning("[%s] Could not load configuration", platform)
@@ -53,9 +53,9 @@ async def async_setup_entry(
 class EltakoSwitch(EltakoEntity, SwitchEntity, RestoreEntity):
     """Representation of an Eltako switch device."""
 
-    def __init__(self, platform:str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP):
+    def __init__(self, platform:str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP, dev_area: str=None):
         """Initialize the Eltako switch device."""
-        super().__init__(platform, gateway, dev_id, dev_name, dev_eep)
+        super().__init__(platform, gateway, dev_id, dev_name, dev_eep, dev_area=dev_area)
         self._sender_id = sender_id
         self._sender_eep = sender_eep
         

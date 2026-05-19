@@ -71,6 +71,7 @@ CONF_TIME_OPENS: Final = "time_opens"
 CONF_TIME_TILTS: Final = "time_tilts"
 CONF_INVERT_SIGNAL: Final = "invert_signal"
 CONF_VOC_TYPE_INDEXES: Final = "voc_type_indexes"
+CONF_AREA: Final = "area"
 
 class LANGUAGE_ABBREVIATION(StrEnum):
     LANG_ENGLISH = 'en'

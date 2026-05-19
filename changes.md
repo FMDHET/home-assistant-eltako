@@ -14,6 +14,7 @@
 * Created blueprint for dmming and switch lights off and on which trigger by EnOcean switches and not controlled via eltako actuators. You can use EnOcean switches to e.g. controll Zigbee lights from Philips Hue or any other protocol and lights which can be controlled by Home Assistant Automations.
 * Connection state fixed: Display information about gateway connection was sometimes displayed incorrectly
 * added repeater mode selection field for gateways
+* added support for optional area field
 
 TODO: improve performance of controlling groups. (send only one group telegram instead of many indivitual commands)
 

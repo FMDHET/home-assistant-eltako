@@ -44,9 +44,9 @@ async def async_setup_entry(
                 sender_config = config_helpers.get_device_conf(entity_config, CONF_SENDER)
 
                 if dev_conf.eep in [A5_38_08]:
-                    entities.append(EltakoDimmableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep))
+                    entities.append(EltakoDimmableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep, dev_conf.area))
                 elif dev_conf.eep in [M5_38_08]:
-                    entities.append(EltakoSwitchableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep))
+                    entities.append(EltakoSwitchableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep, dev_conf.area))
             
             except Exception as e:
                 LOGGER.warning("[%s %s] Could not load configuration", platform, str(dev_conf.id))
@@ -87,13 +87,13 @@ class EltakoDimmableLight(AbstractLightEntity):
     _attr_color_mode = ColorMode.BRIGHTNESS
     _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
 
-    def __init__(self, platform:str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP):
+    def __init__(self, platform:str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP, dev_area: str=None):
         """Initialize the Eltako light source."""
-        super().__init__(platform, gateway, dev_id, dev_name, dev_eep)
+        super().__init__(platform, gateway, dev_id, dev_name, dev_eep, dev_area=dev_area)
         self._sender_id = sender_id
         self._sender_eep = sender_eep
 
-    
+
     def turn_on(self, **kwargs: Any) -> None:
         """Turn the light source on or sets a specific dimmer value."""
         brightness = kwargs.get(ATTR_BRIGHTNESS, 255)
@@ -214,9 +214,9 @@ class EltakoSwitchableLight(AbstractLightEntity):
     _attr_color_mode = ColorMode.ONOFF
     _attr_supported_color_modes = {ColorMode.ONOFF}
 
-    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP):
+    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP, dev_area: str=None):
         """Initialize the Eltako light source."""
-        super().__init__(platform, gateway, dev_id, dev_name, dev_eep)
+        super().__init__(platform, gateway, dev_id, dev_name, dev_eep, dev_area=dev_area)
         self._sender_id = sender_id
         self._sender_eep = sender_eep
 

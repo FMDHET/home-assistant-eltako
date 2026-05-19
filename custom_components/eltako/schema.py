@@ -109,6 +109,7 @@ class BinarySensorSchema(EltakoPlatformSchema):
                 vol.Required(CONF_ID): cv.matches_regex(CONF_ID_REGEX),
                 vol.Required(CONF_EEP): vol.In(CONF_EEP_SUPPORTED_BINARY_SENSOR),
                 vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+                vol.Optional(CONF_AREA): cv.string,
                 vol.Optional(CONF_DEVICE_CLASS): BINARY_SENSOR_DEVICE_CLASSES_SCHEMA,
                 vol.Optional(CONF_INVERT_SIGNAL, default=False): cv.boolean,
             }
@@ -131,6 +132,7 @@ class LightSchema(EltakoPlatformSchema):
                 vol.Required(CONF_EEP): vol.In(CONF_EEP_SUPPORTED),
                 vol.Required(CONF_SENDER): _get_sender_schema(CONF_SENDER_EEP_SUPPORTED),
                 vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+                vol.Optional(CONF_AREA): cv.string,
             }
         ),
     )
@@ -151,6 +153,7 @@ class SwitchSchema(EltakoPlatformSchema):
                 vol.Required(CONF_EEP): vol.In(CONF_EEP_SUPPORTED),
                 vol.Required(CONF_SENDER): _get_sender_schema(CONF_SENDER_EEP_SUPPORTED),
                 vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+                vol.Optional(CONF_AREA): cv.string,
             }
         ),
     )
@@ -185,6 +188,7 @@ class SensorSchema(EltakoPlatformSchema):
                 vol.Required(CONF_ID): cv.matches_regex(CONF_ID_REGEX),
                 vol.Required(CONF_EEP): vol.In(CONF_EEP_SUPPORTED),
                 vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+                vol.Optional(CONF_AREA): cv.string,
                 vol.Optional(CONF_LANGUAGE, default="en"): vol.In([v for v in LANGUAGE_ABBREVIATION]),
                 vol.Optional(CONF_VOC_TYPE_INDEXES, default=[0]): vol.All(cv.ensure_list, [vol.In([v.index for v in VOC_SubstancesType])]),
                 vol.Optional(CONF_METER_TARIFFS, default=DEFAULT_METER_TARIFFS): vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.Range(min=1, max=16))]),
@@ -209,6 +213,7 @@ class CoverSchema(EltakoPlatformSchema):
                 vol.Required(CONF_EEP): vol.In(CONF_EEP_SUPPORTED),
                 vol.Required(CONF_SENDER): _get_sender_schema(CONF_SENDER_EEP_SUPPORTED),
                 vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+                vol.Optional(CONF_AREA): cv.string,
                 vol.Optional(CONF_DEVICE_CLASS): COVER_DEVICE_CLASSES_SCHEMA,
                 vol.Optional(CONF_TIME_CLOSES): vol.All(vol.Coerce(int), vol.Range(min=1, max=255)),
                 vol.Optional(CONF_TIME_OPENS): vol.All(vol.Coerce(int), vol.Range(min=1, max=255)),
@@ -253,7 +258,8 @@ class ClimateSchema(EltakoPlatformSchema):
                 vol.Required(CONF_TEMPERATURE_UNIT): vol.In([u.value for u in UnitOfTemperature]),  # for display: "°C", "°F", "K"
                 vol.Optional(CONF_MIN_TARGET_TEMPERATURE, default=17): cv.Number,
                 vol.Optional(CONF_MAX_TARGET_TEMPERATURE, default=25): cv.Number,
-                vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,  
+                vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+                vol.Optional(CONF_AREA): cv.string,
                 vol.Optional(CONF_ROOM_THERMOSTAT): _get_sender_schema(CONF_CLIMATE_SENDER_EEP),    # physical thermostat like FUTH
                 vol.Optional(CONF_COOLING_MODE): CONF_COOLING_MODE_SCHEMA                           # if not provided cooling is not supported
             }

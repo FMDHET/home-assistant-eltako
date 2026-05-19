@@ -44,37 +44,38 @@ async def async_setup_entry(
                     if dev_conf.eep.eep_string in CONF_EEP_SUPPORTED_BINARY_SENSOR:
                         if dev_conf.eep == A5_30_03:
                             name = "Digital Input 0"
-                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep, 
+                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep,
                                                                 dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_INVERT_SIGNAL),
-                                                                EntityDescription(key="0", name=name) ))
+                                                                EntityDescription(key="0", name=name), dev_conf.area ))
                             name = "Digital Input 1"
-                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep, 
+                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep,
                                                                 dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_INVERT_SIGNAL),
-                                                                EntityDescription(key="1", name=name) ))
+                                                                EntityDescription(key="1", name=name), dev_conf.area ))
                             name = "Digital Input 2"
-                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep, 
+                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep,
                                                                 dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_INVERT_SIGNAL),
-                                                                EntityDescription(key="2", name=name) ))
+                                                                EntityDescription(key="2", name=name), dev_conf.area ))
                             name = "Digital Input 3"
-                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep, 
+                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep,
                                                                 dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_INVERT_SIGNAL),
-                                                                EntityDescription(key="3", name=name) ))
+                                                                EntityDescription(key="3", name=name), dev_conf.area ))
                             name = "Status of Wake"
-                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep, 
+                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep,
                                                                 dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_INVERT_SIGNAL),
-                                                                EntityDescription(key="wake", name=name) ))
+                                                                EntityDescription(key="wake", name=name), dev_conf.area ))
                         elif dev_conf.eep == A5_30_01:
                             name = "Digital Input"
-                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep, 
+                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep,
                                                                 dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_INVERT_SIGNAL),
-                                                                EntityDescription(key="0", name=name) ))
+                                                                EntityDescription(key="0", name=name), dev_conf.area ))
                             name = "Low Battery"
-                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep, 
+                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, name, dev_conf.eep,
                                                                 dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_INVERT_SIGNAL),
-                                                                EntityDescription(key="low_battery", name=name) ))
+                                                                EntityDescription(key="low_battery", name=name), dev_conf.area ))
                         else:
-                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, 
-                                                                dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_INVERT_SIGNAL)))
+                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, dev_conf.name, dev_conf.eep,
+                                                                dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_INVERT_SIGNAL),
+                                                                None, dev_conf.area))
 
                 except Exception as e:
                     LOGGER.warning("[%s] Could not load configuration for platform_id %s", platform, platform_id)
@@ -120,8 +121,8 @@ class EltakoBinarySensor(AbstractBinarySensor):
 
     LAST_RECEIVED_TELEGRAMS:Dict[str,Dict] = {}
 
-    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name:str, dev_eep: EEP, 
-                 device_class: str, invert_signal: bool, description: EntityDescription=None):
+    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name:str, dev_eep: EEP,
+                 device_class: str, invert_signal: bool, description: EntityDescription=None, dev_area: str=None):
         """Initialize the Eltako binary sensor."""
         if description:
             self.entity_description = EntityDescription(
@@ -132,7 +133,7 @@ class EltakoBinarySensor(AbstractBinarySensor):
         else:
             self._channel = None
 
-        super().__init__(platform, gateway, dev_id, dev_name, dev_eep, self._channel)
+        super().__init__(platform, gateway, dev_id, dev_name, dev_eep, self._channel, dev_area=dev_area)
         self.invert_signal = invert_signal
         self._attr_device_class = device_class
 

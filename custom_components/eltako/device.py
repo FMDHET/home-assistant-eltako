@@ -22,7 +22,7 @@ class EltakoEntity(Entity):
     """Parent class for all entities associated with the Eltako component."""
     
     
-    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str="Device", dev_eep: EEP=None, description_key:str=None):
+    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str="Device", dev_eep: EEP=None, description_key:str=None, dev_area: str=None):
         """Initialize the device."""
         self._attr_has_entity_name = True
         self._attr_should_poll = True
@@ -34,6 +34,7 @@ class EltakoEntity(Entity):
         self._attr_dev_id = dev_id
         self._attr_dev_name = config_helpers.get_device_name(dev_name, dev_id, self.general_settings)
         self._attr_dev_eep = dev_eep
+        self._attr_dev_area = dev_area
         self.listen_to_addresses = []
         
         # calculate external address
@@ -71,6 +72,7 @@ class EltakoEntity(Entity):
             manufacturer=MANUFACTURER,
             model=self.dev_eep.eep_string,
             via_device=(DOMAIN, self.gateway.serial_path),
+            suggested_area=self._attr_dev_area,
         )
     
 

@@ -18,7 +18,7 @@ Entity.schedule_update_ha_state = mock.Mock(return_value=None)
 class TestEntityProperties(unittest.TestCase):
 
 
-    def test_entity_properties(self):  
+    def test_entity_properties(self):
         pl = Platform.BINARY_SENSOR
         gw = GatewayMock()
         address = AddressExpression.parse('FE-34-21-01')
@@ -27,7 +27,7 @@ class TestEntityProperties(unittest.TestCase):
         ee = EltakoEntity(pl, gw, address, name, F6_02_01)
 
         self.assertEqual(ee.dev_name, config_helpers.get_device_name(name, address, gw.general_settings))
-        
+
         self.assertEqual(len(ee.listen_to_addresses),1)
         self.assertEqual(ee.listen_to_addresses[0], b'\xfe4!\x01')
 
@@ -38,3 +38,23 @@ class TestEntityProperties(unittest.TestCase):
         self.assertTrue( core.valid_domain(ee._attr_ha_platform) )
         self.assertTrue( core.valid_entity_id(ee.entity_id ) )
         self.assertTrue( core.validate_state(ee.state))
+
+    def test_entity_area_default(self):
+        """When no area is provided, suggested_area in DeviceInfo is None."""
+        gw = GatewayMock()
+        address = AddressExpression.parse('FE-34-21-01')
+
+        ee = EltakoEntity(Platform.BINARY_SENSOR, gw, address, "Switch", F6_02_01)
+
+        self.assertIsNone(ee._attr_dev_area)
+        self.assertIsNone(ee.device_info["suggested_area"])
+
+    def test_entity_area_set(self):
+        """When an area is provided, it is exposed via device_info.suggested_area."""
+        gw = GatewayMock()
+        address = AddressExpression.parse('FE-34-21-01')
+
+        ee = EltakoEntity(Platform.BINARY_SENSOR, gw, address, "Switch", F6_02_01, dev_area="Living Room")
+
+        self.assertEqual(ee._attr_dev_area, "Living Room")
+        self.assertEqual(ee.device_info["suggested_area"], "Living Room")

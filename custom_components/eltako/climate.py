@@ -59,11 +59,12 @@ async def async_setup_entry(
 
                 if dev_conf.eep in [A5_10_06]:
                     ###### This way it is decouple from the order how devices will be loaded.
-                    climate_entity = ClimateController(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, 
-                                                       sender.id, sender.eep, 
-                                                       dev_conf.get(CONF_TEMPERATURE_UNIT), 
-                                                       dev_conf.get(CONF_MIN_TARGET_TEMPERATURE), dev_conf.get(CONF_MAX_TARGET_TEMPERATURE), 
-                                                       thermostat, cooling_switch, cooling_sender)
+                    climate_entity = ClimateController(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep,
+                                                       sender.id, sender.eep,
+                                                       dev_conf.get(CONF_TEMPERATURE_UNIT),
+                                                       dev_conf.get(CONF_MIN_TARGET_TEMPERATURE), dev_conf.get(CONF_MAX_TARGET_TEMPERATURE),
+                                                       thermostat, cooling_switch, cooling_sender,
+                                                       dev_conf.area)
                     entities.append(climate_entity)
 
                     # subscribe for cooling switch events
@@ -122,12 +123,12 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
     _attr_preset_mode = PRESET_HOME
 
 
-    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, 
-                 sender_id: AddressExpression, sender_eep: EEP, 
-                 temp_unit, min_temp: int, max_temp: int, 
-                 thermostat: DeviceConf, cooling_switch: DeviceConf, cooling_sender: DeviceConf):
+    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP,
+                 sender_id: AddressExpression, sender_eep: EEP,
+                 temp_unit, min_temp: int, max_temp: int,
+                 thermostat: DeviceConf, cooling_switch: DeviceConf, cooling_sender: DeviceConf, dev_area: str=None):
         """Initialize the Eltako heating and cooling source."""
-        super().__init__(platform, gateway, dev_id, dev_name, dev_eep)
+        super().__init__(platform, gateway, dev_id, dev_name, dev_eep, dev_area=dev_area)
         self._on_state = False
         self._sender_id = sender_id
         self._sender_eep = sender_eep

@@ -215,6 +215,96 @@ gateway:
         config = yaml.safe_load(self.config_str)
         CONFIG_SCHEMA(config)
 
+    def test_device_config_area(self):
+        """DeviceConf parses the optional area attribute."""
+        with_area = {
+            CONF_ID: "FF-AA-80-01",
+            CONF_EEP: "A5-10-06",
+            CONF_AREA: "Kitchen",
+        }
+        dev_config = DeviceConf(with_area)
+        self.assertTrue(CONF_AREA in dev_config)
+        self.assertTrue(hasattr(dev_config, "area"))
+        self.assertEqual(dev_config.area, "Kitchen")
+        self.assertEqual(dev_config[CONF_AREA], "Kitchen")
+
+    def test_device_config_area_default_none(self):
+        """When area is not configured, DeviceConf.area is None."""
+        dev_config = DeviceConf({
+            CONF_ID: "FF-AA-80-01",
+            CONF_EEP: "A5-10-06",
+        })
+        self.assertTrue(CONF_AREA in dev_config)
+        self.assertIsNone(dev_config.area)
+        self.assertIsNone(dev_config[CONF_AREA])
+
+    config_str_with_area = """
+general_settings:
+  fast_status_change: False
+gateway:
+  - id: 1
+    device_type: fgw14usb
+    base_id: FF-AA-00-00
+    name: GW1
+    devices:
+      light:
+      - id: 00-00-00-01
+        eep: M5-38-08
+        name: "Ceiling Light"
+        area: "Living Room"
+        sender:
+          id: 00-00-B0-01
+          eep: A5-38-08
+      sensor:
+      - id: 05-1E-83-15
+        eep: A5-13-01
+        name: "Weather Station"
+        area: "Garden"
+      binary_sensor:
+      - id: 00-00-00-02
+        eep: F6-02-01
+        name: "Wall Switch"
+        area: "Hallway"
+      switch:
+      - id: 00-00-00-03
+        eep: M5-38-08
+        name: "Outlet"
+        area: "Office"
+        sender:
+          id: 00-00-B0-03
+          eep: A5-38-08
+      cover:
+      - id: 00-00-00-04
+        eep: G5-3F-7F
+        name: "Blinds"
+        area: "Bedroom"
+        sender:
+          id: 00-00-B0-04
+          eep: H5-3F-7F
+      climate:
+      - id: 00-00-00-05
+        eep: A5-10-06
+        name: "Thermostat"
+        area: "Hall"
+        temperature_unit: "°C"
+        sender:
+          id: 00-00-B0-05
+          eep: A5-10-06
+"""
+
+    def test_config_validation_with_area(self):
+        """area is accepted on every device platform."""
+        config = yaml.safe_load(self.config_str_with_area)
+        validated = CONFIG_SCHEMA(config)
+
+        devices = validated[CONF_GATEWAY][0][CONF_DEVICES]
+        self.assertEqual(devices[Platform.LIGHT][0][CONF_AREA], "Living Room")
+        self.assertEqual(devices[Platform.SENSOR][0][CONF_AREA], "Garden")
+        self.assertEqual(devices[Platform.BINARY_SENSOR][0][CONF_AREA], "Hallway")
+        self.assertEqual(devices[Platform.SWITCH][0][CONF_AREA], "Office")
+        self.assertEqual(devices[Platform.COVER][0][CONF_AREA], "Bedroom")
+        self.assertEqual(devices[Platform.CLIMATE][0][CONF_AREA], "Hall")
+
     def test_config_validation_example_file(self):
         filename = os.path.join(os.getcwd(), 'ha.yaml')
         with open(filename, 'r') as file:

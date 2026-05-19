@@ -301,6 +301,7 @@ async def async_setup_entry(
             try:
                 dev_conf = DeviceConf(entity_config, [CONF_METER_TARIFFS])
                 dev_name = dev_conf.name
+                entities_before = len(entities)
             
                 if dev_conf.eep in [A5_13_01]:
                     if dev_name == dev_conf.name:
@@ -377,6 +378,10 @@ async def async_setup_entry(
                     #TODO: add twilight
                     #TODO: add daylight
                     # both are currently combined in illumination
+
+                if dev_conf.area:
+                    for e in entities[entities_before:]:
+                        e._attr_dev_area = dev_conf.area
 
             except Exception as e:
                 LOGGER.warning("[%s] Could not load configuration", platform)

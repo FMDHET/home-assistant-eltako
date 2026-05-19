@@ -40,9 +40,10 @@ async def async_setup_entry(
                 dev_conf = DeviceConf(entity_config, [CONF_DEVICE_CLASS, CONF_TIME_CLOSES, CONF_TIME_OPENS, CONF_TIME_TILTS])
                 sender_config = config_helpers.get_device_conf(entity_config, CONF_SENDER)
 
-                entities.append(EltakoCover(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, 
-                                            sender_config.id, sender_config.eep, 
-                                            dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_TIME_CLOSES), dev_conf.get(CONF_TIME_OPENS), dev_conf.get(CONF_TIME_TILTS)))
+                entities.append(EltakoCover(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep,
+                                            sender_config.id, sender_config.eep,
+                                            dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_TIME_CLOSES), dev_conf.get(CONF_TIME_OPENS), dev_conf.get(CONF_TIME_TILTS),
+                                            dev_conf.area))
 
             except Exception as e:
                 LOGGER.warning("[%s] Could not load configuration", platform)
@@ -56,9 +57,9 @@ async def async_setup_entry(
 class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
     """Representation of an Eltako cover device."""
 
-    def __init__(self, platform:str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP, device_class: str, time_closes, time_opens, time_tilts):
+    def __init__(self, platform:str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP, device_class: str, time_closes, time_opens, time_tilts, dev_area: str=None):
         """Initialize the Eltako cover device."""
-        super().__init__(platform, gateway, dev_id, dev_name, dev_eep)
+        super().__init__(platform, gateway, dev_id, dev_name, dev_eep, dev_area=dev_area)
         self._sender_id = sender_id
         self._sender_eep = sender_eep
 
