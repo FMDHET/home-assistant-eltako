@@ -438,6 +438,7 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
 
         if self.thermostat:
             thermostat_address, _ = self.thermostat.id
+            print(f"thermostat address: {b2s(thermostat_address)}, message address: {b2s(msg.address)}")
             if msg.address == thermostat_address:
                 LOGGER.debug(f"[climate {self.dev_id}] Change state triggered by thermostat: {self.thermostat.id}")
                 self.change_temperature_values(msg)
