@@ -26,7 +26,11 @@ class HassMock():
         
     def __init__(self) -> None:
         self.bus = BusMock()
-        self.loop = asyncio.get_event_loop()
+        try:
+            self.loop = asyncio.get_event_loop()
+        except RuntimeError:
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
 
     # def async_create_task(self, async_call):
     #     asyncio.run( async_call )

@@ -27,27 +27,30 @@ class TestBinarySensor_D5_00_01(unittest.TestCase):
         bs._attr_is_on = False
         self.assertEqual(bs._attr_is_on, False)
 
+        bs._attr_is_on = True
+        self.assertEqual(bs._attr_is_on, True)
+
         msg = Regular1BSMessage(address=b'\x00\x00\x10\x08', 
                                 data=b'\x09', #open
                                 status=b'\x00')
         
         # test if signal is processed correctly (switch on)
         bs.value_changed(msg)
-        self.assertEqual(bs._attr_is_on, False)
+        self.assertEqual(bs._attr_is_on, True)
 
         # test if signal is processed correctly (switch on)
         bs.invert_signal = True
         bs.value_changed(msg)
-        self.assertEqual(bs._attr_is_on, True)
+        self.assertEqual(bs._attr_is_on, False)
 
         # test if signal is processed correctly (switch off)
         msg.data = b'\x08'  # closed
         bs.invert_signal = False
         bs.value_changed(msg)
-        self.assertEqual(bs._attr_is_on, True)
+        self.assertEqual(bs._attr_is_on, False)
 
         # test if signal is processed correctly (switch off)
         bs.invert_signal = True
         bs.value_changed(msg)
-        self.assertEqual(bs._attr_is_on, False)
+        self.assertEqual(bs._attr_is_on, True)
 

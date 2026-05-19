@@ -12,7 +12,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.components import panel_custom, websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er, device_registry as dr, entity_platform as pl
-import pkg_resources
+from importlib.resources import files
 
 
 from .const import *
@@ -92,7 +92,7 @@ async def async_setup(hass: HomeAssistant, config_type: ConfigType) -> bool:
         else:
             LOGGER.debug(f"[{LOG_PREFIX_INIT}] Register frontend and load from package 'home-assistant-eltako-frontend'.")
 
-            static_path = pkg_resources.resource_filename("home_assistant_eltako_frontend", "static")
+            static_path = str(files("home_assistant_eltako_frontend") / "static")
             LOGGER.debug(f"[{LOG_PREFIX_INIT}] Load static path from resource_filename: {static_path}")
 
             # Include frontend from library
