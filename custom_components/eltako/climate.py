@@ -438,7 +438,7 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
 
         if self.thermostat:
             thermostat_address, _ = self.thermostat.id
-            print(f"thermostat address: {b2s(thermostat_address)}, message address: {b2s(msg.address)}")
+            LOGGER.debug(f"thermostat address: {b2s(thermostat_address)}, message address: {b2s(msg.address)}")
             if msg.address == thermostat_address:
                 LOGGER.debug(f"[climate {self.dev_id}] Change state triggered by thermostat: {self.thermostat.id}")
                 self.change_temperature_values(msg)
@@ -473,7 +473,7 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
         if  msg.org == 0x07 and self.dev_eep in [A5_10_06]:
 
             self._attr_actuator_mode = decoded.mode
-            print(f"Decoded mode: {decoded.mode}, target temp: {decoded.target_temperature}, current temp: {decoded.current_temperature}, priority: {decoded.priority.description}")
+            LOGGER.debug(f"Decoded mode: {decoded.mode}, target temp: {decoded.target_temperature}, current temp: {decoded.current_temperature}, priority: {decoded.priority.description}")
             self._attr_current_temperature = decoded.current_temperature
 
             if decoded.mode == A5_10_06.HeaterMode.OFF:
