@@ -146,8 +146,10 @@ class TestClimate(unittest.TestCase):
 
         cc.load_value_initially(LatestStateMock(None))
         self.assertEqual(cc.current_temperature, None)
-        self.assertEqual(cc.target_temperature, None)
-        self.assertEqual(cc.state, None)
+        # When no target temperature was previously stored, fall back to the configured min_temp
+        # so the UI starts at a sensible, in-range value instead of "Unknown".
+        self.assertEqual(cc.target_temperature, cc._attr_min_temp)
+        self.assertEqual(cc.state, 'off')
     
 class TestClimateAsync(unittest.IsolatedAsyncioTestCase):
 
