@@ -430,10 +430,19 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
                 self._attr_target_temperature =  round( 2*decoded.target_temperature, 0)/2 
 
         if msg.org == 0x05:
-            heater_mode = A5_10_06.HeaterMode( int.from_bytes(msg.data, byteorder='big') )
+            # H3: only {0x00,0x10,0x30,0x50,0x70} are valid HeaterMode values. Any other RPS
+            # telegram (e.g. two-button rocker actions) would raise ValueError here and abort
+            # the callback. Fall back to UNKNOWN instead.
+            try:
+                heater_mode = A5_10_06.HeaterMode( int.from_bytes(msg.data, byteorder='big') )
+            except ValueError:
+                LOGGER.debug(f"[climate {self.dev_id}] Ignoring RPS telegram with non-heater-mode data (data={b2s(msg.data)})")
+                return
             LOGGER.debug(f"[climate {self.dev_id}] Heater running in mode: {heater_mode} (data={b2s(msg.data)})")
-            if A5_10_06.HeaterMode.OFF.value == msg.data:
+            # was `HeaterMode.OFF.value == msg.data` -> compared int with bytes -> always False -> OFF never detected
+            if heater_mode == A5_10_06.HeaterMode.OFF:
                 self._attr_hvac_mode = HVACMode.OFF
+                self._attr_hvac_action = HVACAction.OFF
             else:
                 self._attr_hvac_mode = HVACMode.HEAT
                 self._attr_hvac_action = HVACAction.HEATING

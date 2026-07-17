@@ -37,12 +37,15 @@ async def async_setup_entry(
     platform = Platform.CLIMATE
     if platform in config:
         for entity_config in config[platform]:
+            # H6: dev_config may be unassigned if DeviceConf() itself raises -> don't reference it in except
+            dev_config = None
             try:
                 dev_config = DeviceConf(entity_config)
                 entities.append(ClimatePriority(platform, gateway, dev_config.id, dev_config.name, dev_config.eep))
 
             except Exception as e:
-                LOGGER.warning("[%s %s] Could not load configuration", platform, str(dev_config.id))
+                dev_id = dev_config.id if dev_config is not None else entity_config
+                LOGGER.warning("[%s] Could not load configuration for %s", platform, str(dev_id))
                 LOGGER.critical(e, exc_info=True)
         
     validate_actuators_dev_and_sender_id(entities)
