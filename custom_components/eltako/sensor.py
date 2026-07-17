@@ -877,7 +877,12 @@ class GatewayLastReceivedMessage(EltakoSensor):
                         )
         )
         self._attr_name = "Last Message Received"
+
+    async def async_added_to_hass(self) -> None:
+        # H7: register in async_added_to_hass and deregister on removal (was in __init__ -> leaked on reload)
+        await super().async_added_to_hass()
         self.gateway.set_last_message_received_handler(self.async_value_changed)
+        self.async_on_remove(lambda: self.gateway.remove_last_message_received_handler(self.async_value_changed))
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -889,20 +894,20 @@ class GatewayLastReceivedMessage(EltakoSensor):
             model=self.gateway.model,
             via_device=(DOMAIN, self.gateway.serial_path)
         )
-    
+
     async def async_value_changed(self, value: datetime) -> None:
         try:
             self.value_changed(value)
         except AttributeError as e:
             # Home Assistant not ready yet
-            pass  
+            pass
 
     def value_changed(self, value: datetime) -> None:
         """Update the current value."""
         # LOGGER.debug("[%s] Last message received", Platform.SENSOR)
 
         if isinstance(value, datetime):
-            self.native_value = value
+            self._attr_native_value = value
             self.schedule_update_ha_state()
 
 class GatewayReceivedMessagesInActiveSession(EltakoSensor):
@@ -925,7 +930,12 @@ class GatewayReceivedMessagesInActiveSession(EltakoSensor):
                         )
         )
         self._attr_name="Received Messages per Session"
+
+    async def async_added_to_hass(self) -> None:
+        # H7: register in async_added_to_hass and deregister on removal (was in __init__ -> leaked on reload)
+        await super().async_added_to_hass()
         self.gateway.set_received_message_count_handler(self.async_value_changed)
+        self.async_on_remove(lambda: self.gateway.remove_received_message_count_handler(self.async_value_changed))
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -937,19 +947,19 @@ class GatewayReceivedMessagesInActiveSession(EltakoSensor):
             model=self.gateway.model,
             via_device=(DOMAIN, self.gateway.serial_path)
         )
-    
+
     async def async_value_changed(self, value: int) -> None:
         try:
             self.value_changed(value)
         except AttributeError as e:
             # Home Assistant not ready yet
-            pass  
+            pass
 
     def value_changed(self, value: int) -> None:
         """Update the current value."""
         # LOGGER.debug("[%s] received amount of messages: %s", Platform.SENSOR, str(value))
 
-        self.native_value = value
+        self._attr_native_value = value
         self.schedule_update_ha_state()
 
 
@@ -968,8 +978,15 @@ class GatewayBaseId(EltakoSensor):
                             has_entity_name= True,
                         ) )
         self._attr_name = "Base Id"
-        
-        self.gateway.add_base_id_change_handler( self.async_value_changed )
+
+    async def async_added_to_hass(self) -> None:
+        # H7: register in async_added_to_hass and deregister on removal (was in __init__ -> leaked on reload)
+        await super().async_added_to_hass()
+        self.gateway.add_base_id_change_handler(self.async_value_changed)
+        self.async_on_remove(lambda: self.gateway.remove_base_id_change_handler(self.async_value_changed))
+        # reflect the base id that is already known at add time
+        if isinstance(self.gateway.base_id, AddressExpression):
+            await self.async_value_changed(self.gateway.base_id)
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -986,7 +1003,7 @@ class GatewayBaseId(EltakoSensor):
         """Update the current value."""
 
         if isinstance(base_id, AddressExpression):
-            self.native_value = b2s(base_id)
+            self._attr_native_value = b2s(base_id)
             self.schedule_update_ha_state()
 
 
@@ -1071,14 +1088,20 @@ class EventListenerInfoField(EltakoSensor):
         self._attr_name = key
         self._attr_native_value = ''
         self.listen_to_addresses.clear()
+        self._event_id = event_id
 
-        LOGGER.debug(f"[{platform}] [{EventListenerInfoField.__name__}] [{b2s(dev_id)}] [{key}] Register event: {event_id}")
-        self.hass.bus.async_listen(event_id, self.value_changed)
+    async def async_added_to_hass(self) -> None:
+        # H7: async_listen on the GLOBAL hass.bus was called in __init__ and never removed
+        # -> leaked on every reload and fired on dead entities. Register here + async_on_remove.
+        await super().async_added_to_hass()
+        LOGGER.debug(f"[{self._attr_ha_platform}] [{EventListenerInfoField.__name__}] [{self.dev_name}] Register event: {self._event_id}")
+        self.async_on_remove(
+            self.hass.bus.async_listen(self._event_id, self.value_changed)
+        )
 
-    
     def value_changed(self, event) -> None:
         LOGGER.debug(f"Received event: {event}")
-        self.native_value = self.convert_event_function(event)
+        self._attr_native_value = self.convert_event_function(event)
 
         self.schedule_update_ha_state()
             
