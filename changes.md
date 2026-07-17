@@ -1,5 +1,19 @@
 # Changes and Feature List
 
+## Version 2.1.0 — Stability & robustness release
+Umfangreiche Stabilitäts-Überarbeitung (behebt wiederkehrende Abstürze/Einfrieren). Alle Änderungen wurden gegen die gepinnte `eltako14bus==0.0.73` und HA 2026.7 verifiziert und adversarial reviewt. Details siehe `KI-Optimierungen.md`.
+
+* **Empfangs-Thread stirbt nicht mehr still:** Der serielle Empfangs-Callback ist nun gegen unerwartete Exceptions abgesichert (vorher konnte ein einzelnes fehlerhaftes Telegramm den Empfang bis zum HA-Neustart lahmlegen).
+* **Kein Einfrieren von Home Assistant mehr** beim Reload/Reconnect/Beenden: blockierende Thread-Joins laufen im Executor mit Timeout statt im Event-Loop.
+* **Sauberer Reload:** `async_unload_entry` entlädt jetzt alle Plattformen und deregistriert Services/Listener → keine doppelten Entities/Events, keine unique_id-Kollisionen, keine Memory-Leaks.
+* **Automatischer Retry** bei temporären Setup-Fehlern (`ConfigEntryNotReady`), statt endgültig zu scheitern.
+* **Taster (F6-02):** Kein Absturz mehr bei jedem Loslassen; Release-Events und Tastendauer funktionieren wieder.
+* **Climate:** `set_temperature` crasht nicht mehr auf frischen Installationen; OFF-Zustand wird korrekt erkannt; Kühl-Modus-Konfiguration repariert.
+* **Restore nach Neustart:** Sensoren (inkl. Zählerstände) verschwinden nicht mehr; robustes Parsen von Zahlen/Timestamps.
+* **Cover:** kein `TypeError` mehr bei unbekannter Position nach Neustart; Tilt blockiert keine Threads mehr (async).
+* **Fensterkontakt D5-00-01:** korrigierte Offen/Zu-Erkennung (ggf. `invert_signal` anpassen, falls es vorher zur Kompensation gesetzt war).
+* Diverse kleinere Robustheitsfixes (Listener-Leaks, seriellen Port schließen, Logging-Fehler).
+
 ## Version 2.0.0
 * No Need for defining base id in config file except for FGW14-SUB
   * Entity Ids of gateways change so that base id is not contained anymore
