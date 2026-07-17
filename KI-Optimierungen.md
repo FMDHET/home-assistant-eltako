@@ -51,19 +51,19 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
 
 ### P1 — HOCH (Folgefehler, Leaks, eingefrorene Zustände)
 
-- ☐ **H1 — Keine Fehlerbarriere um `value_changed`** · Aufwand: S
+- ☑ **H1 — Keine Fehlerbarriere um `value_changed`** · Aufwand: S
   [device.py:158-171](custom_components/eltako/device.py#L158-L171): `self.value_changed(msg)` und `data['esp2_msg']` ungeschützt. Eine fehlerhafte Entity erzeugt pro Telegramm einen Traceback, Statusupdates gehen verloren.
   **Fix:** `try/except Exception` um den Aufruf (Log mit dev_id + msg); `data.get('esp2_msg')` mit None-Check. Damit werden viele Einzelbugs (H3, M4, M6 …) von „Funktionsausfall" zu „geloggtem Fehler" herabgestuft.
 
-- ☐ **H2 — Restore-Crashes nach jedem HA-Neustart (Sensoren verschwinden)** · Aufwand: S–M
+- ☑ **H2 — Restore-Crashes nach jedem HA-Neustart (Sensoren verschwinden)** · Aufwand: S–M
   [sensor.py:458-488](custom_components/eltako/sensor.py#L458-L488) `load_value_initially`: `int("123.45")` (Meter speichern gerundete Floats!), State `"unavailable"` nicht abgefangen, `float("12,5")` schlägt fehl; `raise e` bricht `async_added_to_hass` ab → „Error adding entity".
   **Fix:** Jede Konvertierung absichern, `unavailable` wie `unknown` behandeln, `float()` für `total_increasing`, **niemals raisen** (nur loggen). Gleiches Muster in [light.py:78](custom_components/eltako/light.py#L78) / [switch.py:74](custom_components/eltako/switch.py#L74) (`raise e` entfernen).
 
-- ☐ **H3 — Climate: ungeschützte HeaterMode-Konvertierung + OFF nie erkannt** · Aufwand: S
+- ☑ **H3 — Climate: ungeschützte HeaterMode-Konvertierung + OFF nie erkannt** · Aufwand: S
   [climate.py:413-427](custom_components/eltako/climate.py#L413-L427): `A5_10_06.HeaterMode(int.from_bytes(...))` außerhalb des try → `ValueError` bei fremden RPS-Telegrammen. Zeile 416 vergleicht `HeaterMode.OFF.value == msg.data` (int vs. bytes) → **immer False**, OFF-Zustand wird nie erkannt.
   **Fix:** Konvertierung in try/except mit Fallback `UNKNOWN`; Vergleich auf Enum-Ebene.
 
-- ☐ **H4 — Cover: `TypeError` bei unbekannter Position (None)** · Aufwand: S
+- ☑ **H4 — Cover: `TypeError` bei unbekannter Position (None)** · Aufwand: S *(inkl. `set_cover_position`, `set_cover_tilt_position` und value_changed-Tilt — der Tilt-Service wurde erst durchs adversariale Review nachgezogen)*
   [cover.py:199-203](custom_components/eltako/cover.py#L199-L203), [cover.py:325-336](custom_components/eltako/cover.py#L325-L336) (Services) und [cover.py:297-308](custom_components/eltako/cover.py#L297-L308) (`value_changed`, Tilt ohne None-Guard → Positionstracking friert ein).
   **Fix:** None-Guards analog zur bestehenden Positionslogik (Zeile 292/303) ergänzen; Services bei unbekannter Position sauber abbrechen oder Annahme treffen.
 
@@ -71,7 +71,7 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
   [cover.py:333-349](custom_components/eltako/cover.py#L333-L349): synchroner Sleep zwischen Fahr- und Stopp-Telegramm. Mehrere Tilt-Kommandos gleichzeitig → Executor-Pool-Starvation, HA wird zäh; Stopp-Telegramm nach Unload geht an toten Dispatcher.
   **Fix:** Auf `async_set_cover_tilt_position` + `asyncio.sleep` umstellen (oder `hass.loop.call_later`), Timer bei `async_will_remove_from_hass` canceln.
 
-- ☐ **H6 — `UnboundLocalError` im Exception-Handler killt Plattform-Setup** · Aufwand: S
+- ☑ **H6 — `UnboundLocalError` im Exception-Handler killt Plattform-Setup** · Aufwand: S
   [light.py:52](custom_components/eltako/light.py#L52) und [select.py:45](custom_components/eltako/select.py#L45): except-Block loggt `dev_conf.id`/`dev_config.id`, das bei Fehlern in der ersten Iteration nie zugewiesen wurde → `UnboundLocalError` propagiert → **gesamte Plattform lädt nicht**.
   **Fix:** Im Log nur `entity_config`/`platform` ausgeben (wie in switch.py/cover.py) oder Variable vorher mit `None` initialisieren.
 
@@ -157,12 +157,18 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 
 **Testergebnis nach Phase 1: 138 Tests → 3 Failures, 0 Errors.** Die 3 verbleibenden Failures sind ein und dieselbe offene Produktentscheidung (siehe Abschnitt „Offene Produktentscheidungen").
 
-### ☐ Phase 2 — Callbacks & Restore robust machen (H1–H4, H6)
-- 2.1 H1: Fehlerbarriere in `device.py` (schützt vor allen weiteren Callback-Bugs)
-- 2.2 H2: Restore-Parsing in `sensor.py` + `raise e` in light/switch entfernen
-- 2.3 H3: HeaterMode-Konvertierung + OFF-Vergleich
-- 2.4 H4: Cover-None-Guards (Services + value_changed)
-- 2.5 H6: UnboundLocalError in light/select-Setup
+### ☑ Phase 2 — Callbacks & Restore robust machen (H1–H4, H6) — **ERLEDIGT 2026-07-17**
+- ☑ 2.1 H1: Fehlerbarriere in `device.py` (schützt vor allen weiteren Callback-Bugs)
+- ☑ 2.2 H2: Restore-Parsing in `sensor.py` + `raise e` in light/switch entfernt
+- ☑ 2.3 H3: HeaterMode-Konvertierung + OFF-Vergleich (+ `HVACAction.OFF`)
+- ☑ 2.4 H4: Cover-None-Guards (`set_cover_position`, `set_cover_tilt_position`, value_changed-Tilt)
+- ☑ 2.5 H6: UnboundLocalError in light/select-Setup
+
+**Adversariales Review (3 Reviewer-Lens + Verifikation, via Workflow):** fand 2 echte Nachbesserungen, beide eingearbeitet:
+- Sensor-Restore parste alle Werte als `float()` → Integer-Sensoren (PIR, Nachrichtenzähler) kamen als `"42.0"` statt `"42"` zurück. Jetzt: echte Ganzzahlen bleiben `int`.
+- H4-None-Guard fehlte in `set_cover_tilt_position` (der Tilt-Service crashte weiter mit `TypeError`). Nachgezogen.
+
+**Testergebnis nach Phase 2: 138 Tests → 3 Failures, 0 Errors** (unverändert die 3 Rocker-Switch-Failures = Produktentscheidung).
 
 ### ☐ Phase 3 — Lifecycle & Leaks (H5, H7, H9, H10)
 - 3.1 H7: Listener/Handler sauber registrieren + deregistrieren (async_on_remove-Muster, Gateway-Remove-Methoden)
@@ -222,3 +228,6 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 | 2026-07-17 | Phase 0: venv (Py 3.14.6, HA 2026.7.2), Test-Harness gefixt (mocks/ConfigEntry/Metadata-Normalisierung) | Baseline: 138 Tests, 6 F / 11 E → nach Harness-Fix 6 F / 2 E |
 | 2026-07-17 | Phase 1: K1–K6 umgesetzt; dazu M3, M6, N1 (+D5-Semantik), N7, M1-Teilfix (VNG `tcp_thread`) | **138 Tests, 3 F / 0 E** — Rest = Produktentscheidung Rocker-Events |
 | 2026-07-17 | Branch `stability-fixes` angelegt; thematisch getrennte Commits | siehe `git log` |
+| 2026-07-17 | Phase 1 nach GitHub gepusht + via PR #1 in FMDHET/main gemergt (nichts an grimmpp) | `origin/main` aktuell |
+| 2026-07-17 | Phase 2: H1, H2, H3, H4, H6 auf Branch `stability-fixes-phase2` | 138 Tests, 3 F / 0 E |
+| 2026-07-17 | Phase 2 adversarial reviewt (Workflow, 3 Lens + Verify); 2 bestätigte Nachbesserungen eingearbeitet | Sensor int/float, Cover-Tilt None-Guard |
