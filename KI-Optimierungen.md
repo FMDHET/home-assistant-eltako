@@ -67,7 +67,7 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
   [cover.py:199-203](custom_components/eltako/cover.py#L199-L203), [cover.py:325-336](custom_components/eltako/cover.py#L325-L336) (Services) und [cover.py:297-308](custom_components/eltako/cover.py#L297-L308) (`value_changed`, Tilt ohne None-Guard → Positionstracking friert ein).
   **Fix:** None-Guards analog zur bestehenden Positionslogik (Zeile 292/303) ergänzen; Services bei unbekannter Position sauber abbrechen oder Annahme treffen.
 
-- ☐ **H5 — Cover: `time.sleep()` bis 255 s blockiert Executor-Threads** · Aufwand: M
+- ☑ **H5 — Cover: `time.sleep()` bis 255 s blockiert Executor-Threads** · Aufwand: M *(async + abbrechbarer Task; Review fand + behob: neues MOVE muss auf STOP des abgebrochenen Tasks warten)*
   [cover.py:333-349](custom_components/eltako/cover.py#L333-L349): synchroner Sleep zwischen Fahr- und Stopp-Telegramm. Mehrere Tilt-Kommandos gleichzeitig → Executor-Pool-Starvation, HA wird zäh; Stopp-Telegramm nach Unload geht an toten Dispatcher.
   **Fix:** Auf `async_set_cover_tilt_position` + `asyncio.sleep` umstellen (oder `hass.loop.call_later`), Timer bei `async_will_remove_from_hass` canceln.
 
@@ -75,7 +75,7 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
   [light.py:52](custom_components/eltako/light.py#L52) und [select.py:45](custom_components/eltako/select.py#L45): except-Block loggt `dev_conf.id`/`dev_config.id`, das bei Fehlern in der ersten Iteration nie zugewiesen wurde → `UnboundLocalError` propagiert → **gesamte Plattform lädt nicht**.
   **Fix:** Im Log nur `entity_config`/`platform` ausgeben (wie in switch.py/cover.py) oder Variable vorher mit `None` initialisieren.
 
-- ☐ **H7 — Listener-/Handler-Leaks (Reload wird nie sauber)** · Aufwand: M
+- ☑ **H7 — Listener-/Handler-Leaks (Reload wird nie sauber)** · Aufwand: M *(async_on_remove/config_entry.async_on_unload; Review fand + behob: `is`→`==` in 2 Remove-Methoden, Climate-Subscription-Timing)*
   - [climate.py:74-79](custom_components/eltako/climate.py#L74-L79): `hass.bus.async_listen` ohne Unsubscribe → nach Reload verarbeiten alte + neue Entity Events, `_send_command` sendet doppelt (Heizungs-Flattern).
   - [sensor.py:1072](custom_components/eltako/sensor.py#L1072) (`EventListenerInfoField.__init__`): Listener im Konstruktor, nie deregistriert.
   - [sensor.py:876/924/968](custom_components/eltako/sensor.py#L876), [binary_sensor.py:379](custom_components/eltako/binary_sensor.py#L379) i.V.m. [gateway.py:118-136](custom_components/eltako/gateway.py#L118-L136): Gateway-Handler-Listen werden nie bereinigt; Registrierung feuert sofort im Konstruktor (vor `async_added_to_hass`).
@@ -89,13 +89,12 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
   d) `stop_tcp_server` schließt Client-Sockets/-Threads nie; ~~`AttributeError` wenn Server nie lief~~ *(AttributeError-Teil bereits in Phase 1 mitgefixt: `tcp_thread=None`-Init + Guard + Join-Timeout)* ([virtual_network_gateway.py:224-226](custom_components/eltako/virtual_network_gateway.py#L224-L226)).
   **Fix:** SO_REUSEADDR + try/except um bind/DNS mit `_running.clear()` im finally; Lock bzw. Kopien + korrekte Reihenfolge im Cleanup; Socket-Timeouts + `Queue(maxsize=…)` mit Drop-Strategie; beim Stop alle Clients schließen; `tcp_thread = None` im `__init__`.
 
-- ☐ **H9 — `validate_path` lässt den seriellen Port offen** · Aufwand: S
+- ☑ **H9 — `validate_path` lässt den seriellen Port offen** · Aufwand: S
   [gateway.py:494-501](custom_components/eltako/gateway.py#L494-L501): `serial.serial_for_url(...)` wird nie geschlossen → Port bleibt belegt, Gateway-Verbindung kann fehlschlagen.
   **Fix:** Port im `finally` schließen (Context-Manager).
 
-- ☐ **H10 — Cross-Loop: `asyncio.to_thread(asyncio.run, coro)`** · Aufwand: M
-  [gateway.py:248-250](custom_components/eltako/gateway.py#L248-L250) (via [button.py:166-168](custom_components/eltako/button.py#L166-L168), „Read memory of bus devices"): Coroutine arbeitet auf dem Loop-gebundenen `self._bus`, läuft aber in neuem Loop eines Worker-Threads → `RuntimeError: … attached to a different loop` / Races.
-  **Fix:** Direkt im HA-Loop awaiten; Blocking-Anteile gezielt in den Executor.
+- ☑ **H10 — Cross-Loop: `asyncio.to_thread(asyncio.run, coro)`** · Aufwand: M — **GEPRÜFT: kein Fix, kein Bug (False Positive)**
+  [gateway.py:250-252](custom_components/eltako/gateway.py#L250-L252) (via [button.py:166-168](custom_components/eltako/button.py#L166-L168), „Read memory of bus devices"): Der Verdacht war „attached to a different loop". **Verifikation gegen die Bibliothek:** Der genutzte `RS485SerialInterfaceV2` ist ein **Thread mit thread-sicheren Queues** und nutzt nur `asyncio.sleep` — er ist NICHT an einen Loop gebunden (im Gegensatz zur `asyncio.Protocol`-Variante `RS485SerialInterface`). Der Crash tritt also nicht auf. Zudem hält `to_thread` das minutenlange Auslesen von bis zu 255 Geräten korrekt vom HA-Loop fern; ein „Fix" (Ausführung im HA-Loop) wäre eine echte Regression. → **Absichtlich unverändert gelassen.**
 
 - ☐ **H11 — Climate: Cooling-Mode-Konfiguration dreifach defekt** · Aufwand: M
   [climate.py:54-58](custom_components/eltako/climate.py#L54-L58), [climate.py:71-74](custom_components/eltako/climate.py#L71-L74) i.V.m. [binary_sensor.py:173](custom_components/eltako/binary_sensor.py#L173):
@@ -170,11 +169,18 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 
 **Testergebnis nach Phase 2: 138 Tests → 3 Failures, 0 Errors** (unverändert die 3 Rocker-Switch-Failures = Produktentscheidung).
 
-### ☐ Phase 3 — Lifecycle & Leaks (H5, H7, H9, H10)
-- 3.1 H7: Listener/Handler sauber registrieren + deregistrieren (async_on_remove-Muster, Gateway-Remove-Methoden)
-- 3.2 H5: Cover-Tilt auf async umstellen
-- 3.3 H9: validate_path Port schließen
-- 3.4 H10: Cross-Loop-Konstrukt ersetzen
+### ☑ Phase 3 — Lifecycle & Leaks (H5, H7, H9, H10) — **ERLEDIGT 2026-07-17**
+- ☑ 3.1 H7: Gateway-Remove-Methoden + Registrierung in `async_added_to_hass` mit `async_on_remove` (sensor/binary_sensor); climate-Listener via `config_entry.async_on_unload`. Bonus: M1 (`native_value`→`_attr_native_value`) mitgefixt.
+- ☑ 3.2 H5: Cover-Tilt auf async + abbrechbaren Task umgestellt (kein `time.sleep` mehr)
+- ☑ 3.3 H9: validate_path schließt den Port (Context-Manager)
+- ☑ 3.4 H10: geprüft — False Positive für den V2-Bus, absichtlich unverändert
+
+**Adversariales Review (3 Lens + Verifikation, via Workflow):** 5 bestätigte Befunde → 3 distinkte, alle eingearbeitet:
+- `is`→`==` in `remove_last_message_received_handler` / `remove_received_message_count_handler` (gebundene Methoden sind bei jedem Zugriff neu → Deregistrierung war ein No-op; Leak beim Deaktivieren der Diagnose-Sensoren).
+- Cover-Tilt-Supersede: zweiter Tilt-Befehl während laufender Bewegung → neuer MOVE wurde vor dem STOP des abgebrochenen Tasks gesendet (Tilt = No-op). Fix: abgebrochenen Task awaiten, damit STOP FIFO-mäßig vor dem neuen MOVE liegt.
+- Climate-Priority-Subscription-Timing: Registrierung wieder deterministisch im Setup (fängt select.py-Restore-Event) + leak-sicher via `config_entry.async_on_unload`.
+
+**Testergebnis nach Phase 3: 138 Tests → 3 Failures, 0 Errors** (unverändert die 3 Rocker-Switch-Failures).
 
 ### ☐ Phase 4 — Virtual Network Gateway härten (H8, M11)
 - 4.1 bind/DNS-Fehlerbehandlung + SO_REUSEADDR + `_running`-Cleanup
@@ -231,3 +237,6 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 | 2026-07-17 | Phase 1 nach GitHub gepusht + via PR #1 in FMDHET/main gemergt (nichts an grimmpp) | `origin/main` aktuell |
 | 2026-07-17 | Phase 2: H1, H2, H3, H4, H6 auf Branch `stability-fixes-phase2` | 138 Tests, 3 F / 0 E |
 | 2026-07-17 | Phase 2 adversarial reviewt (Workflow, 3 Lens + Verify); 2 bestätigte Nachbesserungen eingearbeitet | Sensor int/float, Cover-Tilt None-Guard |
+| 2026-07-17 | Phase 2 nach GitHub gepusht + in FMDHET/main gemergt (`afc1937`) | `origin/main` aktuell |
+| 2026-07-17 | Phase 3: H5, H7, H9 auf Branch `stability-fixes-phase3`; H10 geprüft (kein Fix) | 138 Tests, 3 F / 0 E |
+| 2026-07-17 | Phase 3 adversarial reviewt (Workflow); 3 distinkte Befunde eingearbeitet | is→==, Tilt-Ordering, Climate-Timing |
