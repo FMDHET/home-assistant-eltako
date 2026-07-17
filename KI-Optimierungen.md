@@ -96,7 +96,7 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
 - ☑ **H10 — Cross-Loop: `asyncio.to_thread(asyncio.run, coro)`** · Aufwand: M — **GEPRÜFT: kein Fix, kein Bug (False Positive)**
   [gateway.py:250-252](custom_components/eltako/gateway.py#L250-L252) (via [button.py:166-168](custom_components/eltako/button.py#L166-L168), „Read memory of bus devices"): Der Verdacht war „attached to a different loop". **Verifikation gegen die Bibliothek:** Der genutzte `RS485SerialInterfaceV2` ist ein **Thread mit thread-sicheren Queues** und nutzt nur `asyncio.sleep` — er ist NICHT an einen Loop gebunden (im Gegensatz zur `asyncio.Protocol`-Variante `RS485SerialInterface`). Der Crash tritt also nicht auf. Zudem hält `to_thread` das minutenlange Auslesen von bis zu 255 Geräten korrekt vom HA-Loop fern; ein „Fix" (Ausführung im HA-Loop) wäre eine echte Regression. → **Absichtlich unverändert gelassen.**
 
-- ☐ **H11 — Climate: Cooling-Mode-Konfiguration dreifach defekt** · Aufwand: M
+- ☑ **H11 — Climate: Cooling-Mode-Konfiguration dreifach defekt** · Aufwand: M *(entity_config statt config; CONF_SENSOR statt String-Index; generelles Event + Handler-Filter nach switch_button; Cooling nicht hardware-getestet)*
   [climate.py:54-58](custom_components/eltako/climate.py#L54-L58), [climate.py:71-74](custom_components/eltako/climate.py#L71-L74) i.V.m. [binary_sensor.py:173](custom_components/eltako/binary_sensor.py#L173):
   a) prüft `config` (Gesamt-Config) statt `entity_config` → Zweig nie erreicht; b) `CONF_SENSOR [CONF_SWITCH_BUTTON]` → `TypeError`, äußeres except verwirft die **gesamte Climate-Entity**; c) Event-ID-Mismatch: Subscription mit Button-Suffix, gefeuert ohne → Handler nie aufgerufen, Kühlen fällt nach 15 min auf HEAT zurück.
   **Fix:** `entity_config` prüfen; Zugriff korrigieren; Event-IDs identisch aufbauen.
@@ -104,10 +104,10 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
 ### P2 — MITTEL (latente Crashes, Kompatibilität, falsche Zustände)
 
 - ☐ **M1 — Zuweisung an Property `native_value` statt `_attr_native_value`** — [sensor.py:901/948/985/1077](custom_components/eltako/sensor.py#L901); Fehler wird teils per `except AttributeError: pass` **stumm verschluckt** → Gateway-Sensoren bleiben leer. Konsequent `_attr_native_value` verwenden. · S
-- ☐ **M2 — `ClimateEntityFeature.TURN_ON/TURN_OFF` fehlen** — [climate.py:117](custom_components/eltako/climate.py#L117); seit HA 2025.1 schlagen `climate.turn_on/off`-Services fehl. Features ergänzen. · S
+- ☑ **M2 — `ClimateEntityFeature.TURN_ON/TURN_OFF` fehlen** — Features + `async_turn_on/off` ergänzt. Review-Fix F1: `async_turn_off` sendet OFF direkt (nicht über die Toggle-Logik, die ein OFF-Gerät sonst wieder eingeschaltet hätte). · S
 - ☑ **M3 — `kwargs['temperature']` → `KeyError`** — [climate.py:265](custom_components/eltako/climate.py#L265); `kwargs.get(ATTR_TEMPERATURE)` mit None-Guard. · S *(mit K5 erledigt)*
 - ☐ **M4 — `UnboundLocalError` für Telegramme mit org ≠ 0x05/0x07 (Dimmer)** — [light.py:175-187](custom_components/eltako/light.py#L175-L187); `decoded` nur bei 0x07 zugewiesen. `else: return` ergänzen. · S
-- ☐ **M5 — Zuweisung an Property `hvac_modes` beim Restore** — [climate.py:169](custom_components/eltako/climate.py#L169); `_attr_hvac_modes` verwenden bzw. Modi-Restore entfernen (werden im `__init__` deterministisch gesetzt). · S
+- ☑ **M5 — Zuweisung an Property `hvac_modes` beim Restore** — Modi-Restore entfernt (werden im `__init__` gesetzt), widersprüchliche hvac_mode-Logik bereinigt. · S
 - ☑ **M6 — `raise Exception` mitten im Message-Callback** — [binary_sensor.py:337](custom_components/eltako/binary_sensor.py#L337) (A5-30-03, unbekannter description_key); loggen + `return`. · S *(mit K4 erledigt)*
 - ☐ **M7 — Non-frozen Dataclass-Subklasse von `SensorEntityDescription`** — [sensor.py:82-84](custom_components/eltako/sensor.py#L82-L84); läuft nur noch über HA-Übergangs-Metaclass, künftig `TypeError` **beim Modul-Import** (ganze Sensor-Plattform). `@dataclass(frozen=True, kw_only=True)`. · S
 - ☐ **M8 — `event.data['pressed_buttons']` ohne Guard** — [sensor.py:391-393](custom_components/eltako/sensor.py#L391-L393); fremde/manuell gefeuerte Events → `KeyError`. `.get(..., [])`. · S
@@ -189,8 +189,18 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 - 4.4 M11: service_info/zeroconf-Guards
 - *(Falls das virtuelle Gateway bei dir gar nicht in Benutzung ist, kann diese Phase nach hinten — bitte kurz bestätigen.)*
 
-### ☐ Phase 5 — Climate-Funktionsfehler (H11, M2, M3, M5, M14)
-- Cooling-Mode-Kette reparieren, TURN_ON/OFF-Features, set_temperature-Guards, Restore-Fix, Periodik-Task entscheiden (implementieren vs. entfernen)
+### ☑ Phase 5 — Climate-Funktionsfehler (H11, M2, M5) — **ERLEDIGT 2026-07-17**
+- ☑ H11 Cooling-Kette, ☑ M2 TURN_ON/OFF (+ Review-Fix F1), ☑ M5 Restore, ☑ M3 (schon Phase 1), ⏸️ M14 (Hardware nötig)
+- Adversarial reviewt: F1 gefunden+behoben (turn_off schaltete OFF-Gerät ein). Cooling nicht hardware-getestet.
+
+### ☑ K7 — Geräte über HA-UI löschbar — **ERLEDIGT 2026-07-17** (von dir dokumentiert)
+- `async_remove_config_entry_device` (permissive `return True`) in `eltako_integration_init.py`. Optionaler Config-Abgleich = Folge-Task.
+
+### ☑ K8 — LAN-Gateway: TCP-Verbindung härten — **ERLEDIGT 2026-07-17**
+**Anlass:** Nutzer-Logs zeigten außerdem, dass die *eigentliche* „geht nicht"-Ursache ein Setup-Crash beim Parsen des Gateway-Namens war (`int("2)")`) — in v2.1.0 bereits behoben. Zusätzlich zur TCP-Robustheit:
+- Die Integration übergab dem `TCP2SerialCommunicator` keine Timeouts → Lib-Defaults 60 s Reconnect + 60 s Keep-Alive → lange Ausfälle pro Abbruch.
+- **Fix:** `reconnection_timeout` (Default **15 s**) und `tcp_keep_alive_timeout` (Default **30 s**) werden übergeben und sind pro Gateway per YAML konfigurierbar (`reconnection_timeout:` / `tcp_keep_alive_timeout:`).
+- **Offen/Upstream:** `esp2_gateway_adapter` 0.2.15 behandelt `recv()==b''` (Gegenstelle schließt sauber) als „Nachricht" statt als Disconnect → theoretische Endlosschleife ohne Reconnect. Tritt nur bei *graceful close* auf (Nutzer-Symptom „recovert wieder" deutet auf Timeout-Pfad). Empfehlung: Upstream melden / Bump auf ≥0.2.21 prüfen (nicht blind, da nicht testbar).
 
 ### ☐ Phase 6 — Mittlere Priorität abarbeiten (M1, M4, M6–M10, M12, M13)
 - Reihenfolge nach Gelegenheit; M7 (frozen dataclass) **vor dem nächsten großen HA-Upgrade**
@@ -240,3 +250,7 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 | 2026-07-17 | Phase 2 nach GitHub gepusht + in FMDHET/main gemergt (`afc1937`) | `origin/main` aktuell |
 | 2026-07-17 | Phase 3: H5, H7, H9 auf Branch `stability-fixes-phase3`; H10 geprüft (kein Fix) | 138 Tests, 3 F / 0 E |
 | 2026-07-17 | Phase 3 adversarial reviewt (Workflow); 3 distinkte Befunde eingearbeitet | is→==, Tilt-Ordering, Climate-Timing |
+| 2026-07-17 | Phase 3 gemergt (`55f6601`); **Release v2.1.0** (manifest, changes.md, Auto-Release-Workflow, Tag) | HACS zeigt saubere Version |
+| 2026-07-17 | Nutzer-Logs analysiert → echte „geht nicht"-Ursache = Gateway-ID-Parse-Crash (`int("2)")`), in v2.1.0 bereits behoben | Diagnose |
+| 2026-07-17 | Phase 5: H11, M2 (+F1), M5 + K7 (Geräte-Löschen); nach versehentlichem `git reset` aus Snapshot wiederhergestellt | 138 Tests, 3 F / 0 E |
+| 2026-07-17 | K8: LAN-TCP-Reconnect 60s→15s / Keep-Alive 60s→30s, konfigurierbar | für Release v2.1.1 |
