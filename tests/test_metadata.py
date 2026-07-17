@@ -77,7 +77,8 @@ class MetadataTest(unittest.TestCase):
             requirements_txt = f.read()
 
         for r in manifest['requirements']:
-            self.assertTrue(r in requirements_txt, msg=f"{r} not in manifest")
+            # PEP 503: '-' and '_' are equivalent in package names (e.g. esp2_gateway_adapter vs esp2-gateway-adapter)
+            self.assertTrue(r.replace('-', '_') in requirements_txt.replace('-', '_'), msg=f"{r} not in requirements.txt")
 
 
     def test_eltako14bus_required_and_installed_is_the_same(self):

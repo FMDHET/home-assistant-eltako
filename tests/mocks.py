@@ -26,7 +26,12 @@ class HassMock():
         
     def __init__(self) -> None:
         self.bus = BusMock()
-        self.loop = asyncio.get_event_loop()
+        # Python >= 3.12: get_event_loop() no longer creates a loop implicitly (RuntimeError on 3.14)
+        try:
+            self.loop = asyncio.get_event_loop()
+        except RuntimeError:
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
 
     # def async_create_task(self, async_call):
     #     asyncio.run( async_call )
