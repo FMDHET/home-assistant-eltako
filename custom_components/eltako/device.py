@@ -157,18 +157,26 @@ class EltakoEntity(Entity):
 
     def _message_received_callback(self, data: dict) -> None:
         """Handle incoming messages."""
-        msg = data['esp2_msg']
-        msg_types = [EltakoWrappedRPS, EltakoWrapped1BS, EltakoWrapped4BS, RPSMessage, Regular1BSMessage, Regular4BSMessage]
+        # H1: error barrier - a single faulty value_changed() (unexpected telegram,
+        # decode error, ...) must not abort message processing or produce a traceback
+        # per telegram. Log it and keep the entity alive.
+        try:
+            msg = data.get('esp2_msg')
+            if msg is None:
+                return
+            msg_types = [EltakoWrappedRPS, EltakoWrapped1BS, EltakoWrapped4BS, RPSMessage, Regular1BSMessage, Regular4BSMessage]
 
-        if type(msg) in msg_types:
-            adr = AddressExpression((msg.address, None))
-            if adr.is_local_address():
-                adr = adr.add(self.gateway.base_id)
+            if type(msg) in msg_types:
+                adr = AddressExpression((msg.address, None))
+                if adr.is_local_address():
+                    adr = adr.add(self.gateway.base_id)
 
-            # LOGGER.debug(f"[Device ID: {self.dev_id}] check if message address {b2s(msg.address)} is in registered list {', '.join([b2s(a) for a in self.listen_to_addresses])}")
-            if adr[0] in self.listen_to_addresses:
-                ## TODO: filter out message sent twice through other gateways
-                self.value_changed(msg)
+                # LOGGER.debug(f"[Device ID: {self.dev_id}] check if message address {b2s(msg.address)} is in registered list {', '.join([b2s(a) for a in self.listen_to_addresses])}")
+                if adr[0] in self.listen_to_addresses:
+                    ## TODO: filter out message sent twice through other gateways
+                    self.value_changed(msg)
+        except Exception:
+            LOGGER.exception("[%s %s] Error while processing received message.", self._attr_ha_platform, self.dev_id)
 
 
     def value_changed(self, msg: ESP2Message):

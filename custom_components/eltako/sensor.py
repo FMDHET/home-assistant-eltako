@@ -459,32 +459,36 @@ class EltakoSensor(EltakoEntity, RestoreEntity, SensorEntity):
         LOGGER.debug(f"[{self._attr_ha_platform} {self.dev_id}] eneity unique_id: {self.unique_id}")
         LOGGER.debug(f"[{self._attr_ha_platform} {self.dev_id}] latest state - state: {latest_state.state}")
         LOGGER.debug(f"[{self._attr_ha_platform} {self.dev_id}] latest state - attributes: {latest_state.attributes}")
+        # H2: robust restore parsing. Never raise here - an exception propagates out of
+        # async_added_to_hass and prevents the entity from being added ("Error adding entity").
         try:
-            if 'unknown' == latest_state.state:
-                self._attr_is_on = None
-            else:
-                if latest_state.attributes.get('state_class', None) == 'measurement':
-                    if latest_state.state.count('.') + latest_state.state.count(',') == 1:
-                        self._attr_native_value = float(latest_state.state)
-                    elif latest_state.state.count('.') == 0 and latest_state.state.count(',') == 0:
-                        self._attr_native_value = int(latest_state.state)
-                    else:
-                        self._attr_native_value = None
-
-                elif latest_state.attributes.get('state_class', None) == 'total_increasing':
-                    self._attr_native_value = int(latest_state.state)
-
-                elif latest_state.attributes.get('device_class', None) == 'device_class':
-                    # e.g.: 2024-02-12T23:32:44+00:00
-                    self._attr_native_value = datetime.strptime(latest_state.state, '%Y-%m-%dT%H:%M:%S%z:%f')
-            
-        except Exception as e:
-            if hasattr(self, '_attr_is_on'):
-                self._attr_is_on = None
-            elif hasattr(self, '_attr_native_value'):
+            state_str = latest_state.state
+            # unknown/unavailable/None => no restored value
+            if state_str in ('unknown', 'unavailable', None):
                 self._attr_native_value = None
-            raise e
-        
+            else:
+                state_class = latest_state.attributes.get('state_class', None)
+                device_class = latest_state.attributes.get('device_class', None)
+                if state_class in ('measurement', 'total_increasing', 'total'):
+                    # accept both '.' and ',' as decimal separator (meter values are stored
+                    # rounded, e.g. '123.45' -> int() would raise). Keep genuine integers as
+                    # int so the restored state string matches the live one ('42', not '42.0').
+                    num = float(state_str.replace(',', '.'))
+                    if num.is_integer() and '.' not in state_str and ',' not in state_str:
+                        self._attr_native_value = int(num)
+                    else:
+                        self._attr_native_value = num
+                elif device_class == 'timestamp':
+                    # e.g.: 2024-02-12T23:32:44+00:00
+                    self._attr_native_value = datetime.fromisoformat(state_str)
+                else:
+                    # fall back to the raw string (e.g. enum/text sensors)
+                    self._attr_native_value = state_str
+
+        except Exception as e:
+            LOGGER.warning("[%s %s] Could not restore last state '%s': %s", self._attr_ha_platform, self.dev_id, latest_state.state, str(e))
+            self._attr_native_value = None
+
         self.schedule_update_ha_state()
 
         LOGGER.debug(f"[{self._attr_ha_platform} {self.dev_id} ({type(self).__name__})] value initially loaded: [native_value: {self.native_value}, state: {self.state}]")        

@@ -68,11 +68,12 @@ class EltakoSwitch(EltakoEntity, SwitchEntity, RestoreEntity):
                     self._attr_is_on = 'on' == latest_state.state
                 else:
                     self._attr_is_on = None
-                
+
         except Exception as e:
+            # H2: never raise from load_value_initially - it would prevent the entity from being added
+            LOGGER.warning("[%s %s] Could not restore last state '%s': %s", Platform.SWITCH, self.dev_id, latest_state.state, str(e))
             self._attr_is_on = None
-            raise e
-        
+
         self.schedule_update_ha_state()
 
         LOGGER.debug(f"[{Platform.SWITCH} {str(self.dev_id)}] value initially loaded: [is_on: {self.is_on}, state: {self.state}]")

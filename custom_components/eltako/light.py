@@ -39,6 +39,8 @@ async def async_setup_entry(
     platform = Platform.LIGHT
     if platform in config:
         for entity_config in config[platform]:
+            # H6: dev_conf may be unassigned if DeviceConf() itself raises -> don't reference it in except
+            dev_conf = None
             try:
                 dev_conf = DeviceConf(entity_config)
                 sender_config = config_helpers.get_device_conf(entity_config, CONF_SENDER)
@@ -47,9 +49,10 @@ async def async_setup_entry(
                     entities.append(EltakoDimmableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep))
                 elif dev_conf.eep in [M5_38_08]:
                     entities.append(EltakoSwitchableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep))
-            
+
             except Exception as e:
-                LOGGER.warning("[%s %s] Could not load configuration", platform, str(dev_conf.id))
+                dev_id = dev_conf.id if dev_conf is not None else entity_config
+                LOGGER.warning("[%s] Could not load configuration for %s", platform, str(dev_id))
                 LOGGER.critical(e, exc_info=True)
         
     validate_actuators_dev_and_sender_id(entities)
@@ -72,11 +75,12 @@ class AbstractLightEntity(EltakoEntity, LightEntity, RestoreEntity):
                     self._attr_is_on = None
 
                 self._attr_brightness = latest_state.attributes.get('brightness', None)
-                
+
         except Exception as e:
+            # H2: never raise from load_value_initially - it would prevent the entity from being added
+            LOGGER.warning("[%s %s] Could not restore last state '%s': %s", Platform.LIGHT, self.dev_id, latest_state.state, str(e))
             self._attr_is_on = None
-            raise e
-        
+
         self.schedule_update_ha_state()
 
         LOGGER.debug(f"[{Platform.LIGHT} {self.dev_id}] value initially loaded: [is_on: {self.is_on}, brightness: {self.brightness}, state: {self.state}]")

@@ -187,7 +187,13 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
         
         address, _ = self._sender_id
         position = kwargs[ATTR_POSITION]
-        
+
+        # H4: after a restart without restore state the current position is None.
+        # Absolute moves (fully up/down) work; relative moves cannot be computed.
+        if self._attr_current_cover_position is None and position not in (0, 100):
+            LOGGER.warning("[%s %s] Current position unknown - cannot move to %s%%. Move cover fully up or down once first.", Platform.COVER, str(self.dev_id), position)
+            return
+
         if position == self._attr_current_cover_position:
             return
         elif position == 100:
@@ -294,6 +300,9 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
                     
                     self._attr_current_cover_position = min(self._attr_current_cover_position + int(time_in_seconds / self._time_opens * 100.0), 100)
                     if self._time_tilts is not None:
+                        # H4: tilt position can be None after restart -> guard like the main position above
+                        if self._attr_current_cover_tilt_position is None:
+                            self._attr_current_cover_tilt_position = 0
                         self._attr_current_cover_tilt_position = min(self._attr_current_cover_tilt_position + int(decoded.time / self._time_tilts * 100.0), 100)
 
                 else:  # down
@@ -305,6 +314,9 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
                     
                     self._attr_current_cover_position = max(self._attr_current_cover_position - int(time_in_seconds / self._time_closes * 100.0), 0)
                     if self._time_tilts is not None:
+                        # H4: tilt position can be None after restart -> guard like the main position above
+                        if self._attr_current_cover_tilt_position is None:
+                            self._attr_current_cover_tilt_position = 100
                         self._attr_current_cover_tilt_position = max(self._attr_current_cover_tilt_position - int(decoded.time / self._time_tilts * 100.0), 0)
 
                 if self._attr_current_cover_position == 0:
@@ -325,7 +337,13 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
     def set_cover_tilt_position(self, **kwargs: Any) -> None:
         address, _ = self._sender_id
         tilt_position = kwargs[ATTR_TILT_POSITION]
-        
+
+        # H4: current tilt position is None after a restart without restore state -> relative
+        # tilt cannot be computed and `int > None` would raise TypeError. Same guard as set_cover_position.
+        if self._attr_current_cover_tilt_position is None:
+            LOGGER.warning("[%s %s] Current tilt position unknown - cannot tilt to %s%%. Move cover fully up or down once first.", Platform.COVER, str(self.dev_id), tilt_position)
+            return
+
         if tilt_position == self._attr_current_cover_tilt_position:
             return
         elif tilt_position > self._attr_current_cover_tilt_position:
