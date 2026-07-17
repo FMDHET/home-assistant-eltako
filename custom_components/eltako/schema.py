@@ -272,6 +272,8 @@ class GatewaySchema(EltakoPlatformSchema):
             vol.Optional(CONF_GATEWAY_ADDRESS): cv.string,
             vol.Optional(CONF_GATEWAY_MESSAGE_DELAY, default=0.01): cv.Number,
             vol.Optional(CONF_GATEWAY_PORT, default=5100): cv.Number,
+            vol.Optional(CONF_GATEWAY_RECONNECTION_TIMEOUT, default=15): cv.Number,       # LAN gateways only
+            vol.Optional(CONF_GATEWAY_TCP_KEEP_ALIVE_TIMEOUT, default=30): cv.Number,     # LAN gateways only
             vol.Optional(CONF_DEVICES): vol.All(vol.Schema({
                 **BinarySensorSchema.platform_node(),
                 **LightSchema.platform_node(),

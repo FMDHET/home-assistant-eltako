@@ -56,9 +56,10 @@ class EnOceanGateway:
     creating devices if needed, and dispatching messages to platforms.
     """
 
-    def __init__(self, general_settings:dict, hass: HomeAssistant, 
-                 dev_id: int, dev_type: GatewayDeviceType, serial_path: str, baud_rate: int, port: int, base_id: AddressExpression, dev_name: str, auto_reconnect: bool=True, message_delay:float=None, 
-                 config_entry: ConfigEntry = None):
+    def __init__(self, general_settings:dict, hass: HomeAssistant,
+                 dev_id: int, dev_type: GatewayDeviceType, serial_path: str, baud_rate: int, port: int, base_id: AddressExpression, dev_name: str, auto_reconnect: bool=True, message_delay:float=None,
+                 config_entry: ConfigEntry = None,
+                 reconnection_timeout: float = 15, tcp_keep_alive_timeout: float = 30):
 
         """Initialize the Eltako gateway."""
 
@@ -67,6 +68,10 @@ class EnOceanGateway:
         self.baud_rate = baud_rate
         self._auto_reconnect = auto_reconnect
         self._message_delay = message_delay
+        # TCP stability (LAN gateways): shorter than the library defaults (60s each) so a dropped
+        # TCP connection recovers in seconds instead of up to a minute.
+        self._reconnection_timeout = reconnection_timeout
+        self._tcp_keep_alive_timeout = tcp_keep_alive_timeout
         self.port = port
         self._attr_dev_type = dev_type
         self._attr_serial_path = serial_path
@@ -201,11 +206,14 @@ class EnOceanGateway:
                                                auto_reconnect=self._auto_reconnect)
             
         elif GatewayDeviceType.is_lan_gateway(self.dev_type) and not GatewayDeviceType.is_esp2_gateway(self.dev_type):
-            self._bus = TCP2SerialCommunicator(host=self.serial_path, 
-                                               port=self.port, 
-                                               callback=self._callback_receive_message_from_serial_bus, 
+            self._bus = TCP2SerialCommunicator(host=self.serial_path,
+                                               port=self.port,
+                                               callback=self._callback_receive_message_from_serial_bus,
                                                esp2_translation_enabled=True,
-                                               auto_reconnect=self._auto_reconnect)
+                                               auto_reconnect=self._auto_reconnect,
+                                               # faster recovery from dropped TCP connections (library defaults are 60s)
+                                               reconnection_timeout=self._reconnection_timeout,
+                                               tcp_keep_alive_timeout=self._tcp_keep_alive_timeout)
         else:
             self._bus = ESP3SerialCommunicator(filename=self.serial_path, 
                                                callback=self._callback_receive_message_from_serial_bus, 

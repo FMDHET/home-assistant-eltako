@@ -49,6 +49,8 @@ CONF_DEVICE_TYPE: Final = "device_type"
 CONF_SERIAL_PATH: Final = "serial_path"
 CONF_GATEWAY_ADDRESS: Final = "address"
 CONF_GATEWAY_MESSAGE_DELAY: Final = "message_delay"
+CONF_GATEWAY_RECONNECTION_TIMEOUT: Final = "reconnection_timeout"      # LAN gateways: wait time before reconnecting after a TCP drop
+CONF_GATEWAY_TCP_KEEP_ALIVE_TIMEOUT: Final = "tcp_keep_alive_timeout"  # LAN gateways: detect a silently dead TCP connection after this many seconds
 
 CONF_GATEWAY_AUTO_RECONNECT: Final = "auto_reconnect"
 CONF_GATEWAY_PORT: Final = "port"
