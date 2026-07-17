@@ -19,7 +19,7 @@ from .config_helpers import DeviceConf
 from .gateway import EnOceanGateway
 from .const import CONF_SENDER, CONF_TIME_CLOSES, CONF_TIME_OPENS, CONF_TIME_TILTS, DOMAIN, MANUFACTURER, LOGGER
 from . import get_gateway_from_hass, get_device_config_for_gateway
-import time
+import asyncio
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -71,6 +71,7 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
         self._time_closes = time_closes
         self._time_opens = time_opens
         self._time_tilts = time_tilts
+        self._tilt_task = None  # H5: cancellable task for the tilt move/stop sequence
         
         self._attr_supported_features = (CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.STOP)
         
@@ -334,7 +335,10 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
             self.schedule_update_ha_state()
 
 
-    def set_cover_tilt_position(self, **kwargs: Any) -> None:
+    async def async_set_cover_tilt_position(self, **kwargs: Any) -> None:
+        # H5: was a synchronous method that called time.sleep() for up to 255s, blocking an
+        # executor worker for minutes (fleet-wide starvation on scenes). Now async: the
+        # move/stop telegrams are sent by a cancellable background task.
         address, _ = self._sender_id
         tilt_position = kwargs[ATTR_TILT_POSITION]
 
@@ -349,24 +353,19 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
         elif tilt_position > self._attr_current_cover_tilt_position:
             direction = "up"
             sleeptime = min((((tilt_position - self._attr_current_cover_tilt_position) / 100.0 * self._time_tilts / 10.0) ), 255.0)
-        elif tilt_position < self._attr_current_cover_tilt_position:
+        else:
             direction = "down"
             sleeptime = min((((self._attr_current_cover_tilt_position - tilt_position) / 100.0 * self._time_tilts / 10.0) ), 255.0)
 
         if self._sender_eep == H5_3F_7F:
-            if direction == "up":
-                command = 0x01
-            elif direction == "down":
-                command = 0x02
-            
-            msg = H5_3F_7F(0, command, 1).encode_message(address)
-            self.send_message(msg)
-            time.sleep(sleeptime)
-            
-            msg = H5_3F_7F(0, 0x00, 1).encode_message(address)
-            self.send_message(msg)
+            command = 0x01 if direction == "up" else 0x02
+            # cancel a still-running tilt sequence and WAIT for its stop telegram to be queued
+            # before sending the new move telegram. hass.async_create_task eager-starts the new
+            # task, so without this await the new MOVE would be dispatched before the cancelled
+            # task's STOP, and the STOP would immediately halt the new movement (no-op tilt).
+            await self._cancel_tilt_task()
+            self._tilt_task = self.hass.async_create_task(self._async_run_tilt(address, command, sleeptime))
 
-        
         if self.general_settings[CONF_FAST_STATUS_CHANGE]:
             if direction == "up":
                 self._attr_is_opening = True
@@ -374,3 +373,37 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
             elif direction == "down":
                 self._attr_is_closing = True
                 self._attr_is_opening = False
+            self.schedule_update_ha_state()
+
+    async def _async_run_tilt(self, address, command, sleeptime) -> None:
+        """Send the tilt-start telegram, wait, then send the stop telegram. Cancellable. (H5)"""
+        try:
+            self.send_message(H5_3F_7F(0, command, 1).encode_message(address))
+            await asyncio.sleep(sleeptime)
+            self.send_message(H5_3F_7F(0, 0x00, 1).encode_message(address))
+        except asyncio.CancelledError:
+            # ensure the cover does not keep moving when cancelled (new command / entity removed)
+            try:
+                self.send_message(H5_3F_7F(0, 0x00, 1).encode_message(address))
+            except Exception:
+                pass
+            raise
+
+    async def _cancel_tilt_task(self) -> None:
+        # Cancel the running tilt task and await it so its stop-on-cancel telegram is flushed
+        # into the (FIFO) send pipeline before the caller sends anything new.
+        task = self._tilt_task
+        self._tilt_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                LOGGER.exception("[%s %s] Error while cancelling tilt task.", Platform.COVER, str(self.dev_id))
+
+    async def async_will_remove_from_hass(self) -> None:
+        # H5: cancel a pending tilt sequence so it does not send telegrams for a removed entity
+        await self._cancel_tilt_task()
+        await super().async_will_remove_from_hass()

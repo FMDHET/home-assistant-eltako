@@ -120,6 +120,11 @@ class EnOceanGateway:
     def add_base_id_change_handler(self, handler):
         self._base_id_change_handlers.append(handler)
 
+    def remove_base_id_change_handler(self, handler):
+        # H7: allow entities to deregister on removal so handlers don't leak / fire on dead entities
+        if handler in self._base_id_change_handlers:
+            self._base_id_change_handlers.remove(handler)
+
     def _fire_base_id_change_handlers(self, base_id: AddressExpression):
         for handler in self._base_id_change_handlers:
             self.hass.create_task(
@@ -129,6 +134,11 @@ class EnOceanGateway:
     def add_connection_state_changed_handler(self, handler):
         self._connection_state_handlers.append(handler)
         self._fire_connection_state_changed_event(self._bus.is_active())
+
+    def remove_connection_state_changed_handler(self, handler):
+        # H7: allow entities to deregister on removal
+        if handler in self._connection_state_handlers:
+            self._connection_state_handlers.remove(handler)
 
 
     def _fire_connection_state_changed_event(self, status):
@@ -141,6 +151,14 @@ class EnOceanGateway:
     def set_last_message_received_handler(self, handler):
         self._last_message_received_handler = handler
 
+    def remove_last_message_received_handler(self, handler):
+        # H7: compare with == (NOT is): a bound method is created fresh on every attribute
+        # access, so `is` would never match and the deregistration would be a no-op.
+        # Distinct entity instances still compare unequal (different __self__), so this only
+        # clears the slot if it is still the given entity's handler.
+        if self._last_message_received_handler == handler:
+            self._last_message_received_handler = None
+
 
     def _fire_last_message_received_event(self):
         if self._last_message_received_handler:
@@ -151,6 +169,11 @@ class EnOceanGateway:
 
     def set_received_message_count_handler(self, handler):
         self._received_message_count_handler = handler
+
+    def remove_received_message_count_handler(self, handler):
+        # H7: compare with == (NOT is) - see remove_last_message_received_handler above.
+        if self._received_message_count_handler == handler:
+            self._received_message_count_handler = None
 
 
     def _fire_received_message_count_event(self):
@@ -528,9 +551,11 @@ def detect() -> list[str]:
 
 def validate_path(path: str, baud_rate: int):
     """Return True if the provided path points to a valid serial port, False otherwise."""
+    # H9: close the port again - leaving it open kept the serial device busy so the
+    # gateway could not connect afterwards.
     try:
-        serial.serial_for_url(path, baud_rate, timeout=0.1)
-        return True
+        with serial.serial_for_url(path, baud_rate, timeout=0.1):
+            return True
     except serial.SerialException as exception:
         LOGGER.warning("Gateway path %s is invalid: %s", path, str(exception))
         return False

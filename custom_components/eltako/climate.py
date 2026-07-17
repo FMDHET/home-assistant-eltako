@@ -59,24 +59,31 @@ async def async_setup_entry(
 
                 if dev_conf.eep in [A5_10_06]:
                     ###### This way it is decouple from the order how devices will be loaded.
-                    climate_entity = ClimateController(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, 
-                                                       sender.id, sender.eep, 
-                                                       dev_conf.get(CONF_TEMPERATURE_UNIT), 
-                                                       dev_conf.get(CONF_MIN_TARGET_TEMPERATURE), dev_conf.get(CONF_MAX_TARGET_TEMPERATURE), 
+                    climate_entity = ClimateController(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep,
+                                                       sender.id, sender.eep,
+                                                       dev_conf.get(CONF_TEMPERATURE_UNIT),
+                                                       dev_conf.get(CONF_MIN_TARGET_TEMPERATURE), dev_conf.get(CONF_MAX_TARGET_TEMPERATURE),
                                                        thermostat, cooling_switch, cooling_sender)
                     entities.append(climate_entity)
 
-                    # subscribe for cooling switch events
+                    # H7: subscribe here (deterministic timing - registered during platform setup,
+                    # before entities are added, so the initial priority event that select.py fires
+                    # during its restore is not missed). Cleanup is tied to the config entry via
+                    # async_on_unload, so the listeners are removed on reload/unload (no leak;
+                    # the async_listen return value used to be discarded).
                     if cooling_switch is not None:
-                        event_id = config_helpers.get_bus_event_type(gateway.dev_id, EVENT_BUTTON_PRESSED, cooling_switch.id, 
-                                                                     config_helpers.convert_button_pos_from_hex_to_str(cooling_switch.get(CONF_SWITCH_BUTTON)))
-                        LOGGER.debug(f"Subscribe for listening to cooling switch events: {event_id}")
-                        hass.bus.async_listen(event_id, climate_entity.async_handle_cooling_switch_event)
+                        cooling_event_id = config_helpers.get_bus_event_type(gateway.dev_id, EVENT_BUTTON_PRESSED, cooling_switch.id,
+                                                                             config_helpers.convert_button_pos_from_hex_to_str(cooling_switch.get(CONF_SWITCH_BUTTON)))
+                        LOGGER.debug(f"[climate {dev_conf.id}] Subscribe for listening to cooling switch events: {cooling_event_id}")
+                        config_entry.async_on_unload(
+                            hass.bus.async_listen(cooling_event_id, climate_entity.async_handle_cooling_switch_event)
+                        )
 
-                    # subscribe for prio config
-                    event_id = config_helpers.get_bus_event_type(gateway.base_id, EVENT_CLIMATE_PRIORITY_SELECTED, dev_conf.id)
-                    LOGGER.debug(f"Subscribe for listening to priority change events: {event_id}")
-                    hass.bus.async_listen(event_id, climate_entity.async_handle_priority_events)
+                    priority_event_id = config_helpers.get_bus_event_type(gateway.base_id, EVENT_CLIMATE_PRIORITY_SELECTED, dev_conf.id)
+                    LOGGER.debug(f"[climate {dev_conf.id}] Subscribe for listening to priority change events: {priority_event_id}")
+                    config_entry.async_on_unload(
+                        hass.bus.async_listen(priority_event_id, climate_entity.async_handle_priority_events)
+                    )
 
             except Exception as e:
                 LOGGER.warning("[%s] Could not load configuration", platform)
