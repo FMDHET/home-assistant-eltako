@@ -1,5 +1,14 @@
 # Changes and Feature List
 
+## Version 2.1.1 — Climate, LAN-TCP stability & device removal
+* **LAN-Gateway (mgw-lan/EUL etc.): stabilere TCP-Verbindung.** Nach einem Verbindungsabbruch wird jetzt nach **15 s** statt 60 s neu verbunden und ein stillgelegter Kanal nach **30 s** statt 60 s erkannt. Beides pro Gateway per YAML einstellbar (`reconnection_timeout:`, `tcp_keep_alive_timeout:`).
+* **Geräte lassen sich jetzt über die HA-Oberfläche löschen** (Gerät → „Gerät löschen"). Noch in der YAML konfigurierte Geräte kommen beim nächsten Reload zurück (erwartetes Verhalten bei YAML-Integrationen).
+* **Heizen/Kühlen (Climate):**
+  * Kühl-Modus-Konfiguration (`cooling_mode`) repariert — war durch mehrere Fehler faktisch funktionslos und verwarf teils die ganze Climate-Entity.
+  * `climate.turn_on`/`climate.turn_off` funktionieren wieder (ab HA 2025.1); `turn_off` schaltet zuverlässig aus (schaltete zuvor ein bereits ausgeschaltetes Gerät wieder ein).
+  * Zustands-Wiederherstellung nach Neustart bereinigt (Modi/Temperaturen).
+* Hinweis: Der Kühl-Pfad konnte nicht mit echter Hardware getestet werden.
+
 ## Version 2.1.0 — Stability & robustness release
 Umfangreiche Stabilitäts-Überarbeitung (behebt wiederkehrende Abstürze/Einfrieren). Alle Änderungen wurden gegen die gepinnte `eltako14bus==0.0.73` und HA 2026.7 verifiziert und adversarial reviewt. Details siehe `KI-Optimierungen.md`.
 

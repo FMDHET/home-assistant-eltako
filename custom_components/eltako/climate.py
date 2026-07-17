@@ -51,9 +51,13 @@ async def async_setup_entry(
 
                 cooling_switch = None
                 cooling_sender = None
-                if CONF_COOLING_MODE in config.keys():
+                # H11: check entity_config (this climate device), NOT the whole gateway config.
+                if CONF_COOLING_MODE in entity_config:
                     LOGGER.debug("[Climate] Read cooling switch config")
-                    cooling_switch = config_helpers.get_device_conf(entity_config.get(CONF_COOLING_MODE), CONF_SENSOR [CONF_SWITCH_BUTTON])
+                    # H11: the cooling switch is the 'sensor' sub-config; the previous
+                    # `CONF_SENSOR [CONF_SWITCH_BUTTON]` was string-indexing ("sensor"["switch_button"])
+                    # -> TypeError that discarded the whole climate entity.
+                    cooling_switch = config_helpers.get_device_conf(entity_config.get(CONF_COOLING_MODE), CONF_SENSOR)
                     LOGGER.debug("[Climate] Read cooling sender config")
                     cooling_sender = config_helpers.get_device_conf(entity_config.get(CONF_COOLING_MODE), CONF_SENDER)
 
@@ -72,8 +76,11 @@ async def async_setup_entry(
                     # async_on_unload, so the listeners are removed on reload/unload (no leak;
                     # the async_listen return value used to be discarded).
                     if cooling_switch is not None:
-                        cooling_event_id = config_helpers.get_bus_event_type(gateway.dev_id, EVENT_BUTTON_PRESSED, cooling_switch.id,
-                                                                             config_helpers.convert_button_pos_from_hex_to_str(cooling_switch.get(CONF_SWITCH_BUTTON)))
+                        # H11: subscribe to the GENERAL button-pressed event (no button-position
+                        # suffix) - that is what binary_sensor.value_changed actually fires. The
+                        # per-button filtering happens in async_handle_cooling_switch_event by
+                        # comparing the telegram data byte with the configured switch_button.
+                        cooling_event_id = config_helpers.get_bus_event_type(gateway.dev_id, EVENT_BUTTON_PRESSED, cooling_switch.id)
                         LOGGER.debug(f"[climate {dev_conf.id}] Subscribe for listening to cooling switch events: {cooling_event_id}")
                         config_entry.async_on_unload(
                             hass.bus.async_listen(cooling_event_id, climate_entity.async_handle_cooling_switch_event)
@@ -121,7 +128,10 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
     _attr_swing_modes = None
     _attr_current_temperature = 0
     _attr_target_temperature = 0
-    _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
+    # M2: declare TURN_OFF/TURN_ON - the entity offers HVACMode.OFF, and since HA 2025.1 the
+    # climate.turn_on/turn_off services fail for entities that don't declare these features.
+    _attr_supported_features = (ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
+                                | ClimateEntityFeature.TURN_OFF | ClimateEntityFeature.TURN_ON)
     _attr_preset_modes = [PRESET_HOME, # normal mode
                             PRESET_SLEEP, # night set back -4°K
                             PRESET_ECO # -2°K
@@ -174,32 +184,25 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
         LOGGER.debug(f"[climate {self.dev_id}] latest state - attributes: {latest_state.attributes}")
 
         try:
-            self.hvac_modes = []
-            for m_str in latest_state.attributes.get('hvac_modes', []):
-                for m_enum in HVACMode:
-                    if m_str == m_enum.value:
-                        self.hvac_modes.append(m_enum)
-
             self._attr_current_temperature = latest_state.attributes.get('current_temperature', None)
             self._attr_target_temperature = latest_state.attributes.get('temperature', None)
             self._attr_preset_mode = latest_state.attributes.get('preset_mode', None)
-            if latest_state.state is not None:
-                self._attr_hvac_mode = HVACMode(latest_state.state)
-            else:
-                self._attr_hvac_mode = HVACMode.OFF
 
+            # M5: do NOT restore hvac_modes - they are set deterministically in __init__
+            # (writing self.hvac_modes hit the property and could drop COOL). Only restore the
+            # current hvac_mode, robustly (state may be None/'unknown'/'unavailable').
             self._attr_hvac_mode = None
             for m_enum in HVACMode:
                 if latest_state.state == m_enum.value:
                     self._attr_hvac_mode = m_enum
                     break
-                
+
         except Exception as e:
+            LOGGER.warning(f"[climate {self.dev_id}] Could not restore last state '{latest_state.state}': {e}")
             self._attr_hvac_mode = None
             self._attr_current_temperature = None
             self._attr_target_temperature = None
-            # raise e
-        
+
         self.schedule_update_ha_state()
 
         LOGGER.debug(f"[climate {self.dev_id}] value initially loaded: [state: {self.state}, modes: [{self.hvac_modes}], current temp: {self.current_temperature}, target temp: {self.target_temperature}]")
@@ -230,7 +233,15 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
         """Receives signal from cooling switches if defined in configuration."""
         # LOGGER.debug(f"[climate {self.dev_id}] Event received: {call.data}")
 
-        LOGGER.debug(f"[climate {self.dev_id}] Cooling Switch {call.data['switch_address']} for button {hex(call.data['data'])} timestamp set.")
+        # H11: we subscribe to the general (no button-suffix) event, so filter here. For rocker
+        # switches a specific button is configured (switch_button != 0) -> only that button counts
+        # as a cooling signal. For FTS14EM contacts (switch_button not set / 0) accept any signal.
+        switch_button = self.cooling_switch.get(CONF_SWITCH_BUTTON) if self.cooling_switch is not None else None
+        if switch_button:
+            if call.data.get('data') != switch_button:
+                return
+
+        LOGGER.debug(f"[climate {self.dev_id}] Cooling Switch {call.data.get('switch_address')} for button {call.data.get('data')} timestamp set.")
         self.cooling_switch_last_signal_timestamp = time.time()
 
         await self._async_check_if_cooling_is_activated()
@@ -270,6 +281,24 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
         elif hvac_mode == self._get_mode():
             self._attr_hvac_mode = hvac_mode
             self._send_set_normal_mode()
+
+
+    async def async_turn_off(self) -> None:
+        """Turn the heating/cooling actuator off. (M2)
+
+        Sends OFF directly. It must NOT delegate to async_set_hvac_mode(OFF): that method
+        treats OFF as a toggle (pressing OFF while already off switches the actuator back
+        ON), so climate.turn_off on an already-off unit would wrongly turn it on. (review F1)
+        """
+        self._send_mode_off()
+        self._attr_hvac_mode = HVACMode.OFF
+        self._attr_hvac_action = HVACAction.OFF
+        self.schedule_update_ha_state()
+
+    async def async_turn_on(self) -> None:
+        """Turn the actuator on to the currently active mode (heating or cooling). (M2)"""
+        # _get_mode() never returns OFF, so this always hits the 'set normal mode' branch.
+        await self.async_set_hvac_mode(self._get_mode())
 
 
     async def async_set_temperature(self, **kwargs) -> None:

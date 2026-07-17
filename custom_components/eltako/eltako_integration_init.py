@@ -181,12 +181,16 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     auto_reconnect = gateway_config.get(CONF_GATEWAY_AUTO_RECONNECT, True)
     gateway_base_id = AddressExpression.parse(gateway_config[CONF_BASE_ID])
     message_delay = gateway_config.get(CONF_GATEWAY_MESSAGE_DELAY, None)
+    # LAN gateways: TCP reconnect/keep-alive timeouts (shorter than the library's 60s defaults)
+    reconnection_timeout = gateway_config.get(CONF_GATEWAY_RECONNECTION_TIMEOUT, 15)
+    tcp_keep_alive_timeout = gateway_config.get(CONF_GATEWAY_TCP_KEEP_ALIVE_TIMEOUT, 30)
     LOGGER.debug(f"[{LOG_PREFIX_INIT}] id: {gateway_id}, device type: {gateway_device_type}, serial path: {gateway_serial_path}, baud rate: {baud_rate}, base id: {gateway_base_id}")
-    
+
     if gateway_device_type == GatewayDeviceType.VirtualNetworkAdapter:
         gateway = VirtualNetworkGateway(general_settings, hass, gateway_id, port, config_entry)
     else:
-        gateway = EnOceanGateway(general_settings, hass, gateway_id, gateway_device_type, gateway_serial_path, baud_rate, port, gateway_base_id, gateway_name, auto_reconnect, message_delay, config_entry)
+        gateway = EnOceanGateway(general_settings, hass, gateway_id, gateway_device_type, gateway_serial_path, baud_rate, port, gateway_base_id, gateway_name, auto_reconnect, message_delay, config_entry,
+                                 reconnection_timeout=reconnection_timeout, tcp_keep_alive_timeout=tcp_keep_alive_timeout)
 
     # K6: connection problems are usually temporary (e.g. USB stick not ready yet) => let HA retry
     try:
@@ -262,3 +266,25 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     await async_unload_gateway(hass, config_entry)
 
     return unload_platforms_ok
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, config_entry: ConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """K7: Allow removing an Eltako device via the Home Assistant UI.
+
+    Without this module-level function Home Assistant hides the "Delete device"
+    button and refuses removal ("Config entry does not support device removal").
+
+    The integration is YAML-configured: a device that is still listed in the
+    `eltako:` section will be re-created on the next reload. This function is
+    therefore mainly for cleaning up leftovers after a configuration change.
+
+    Returning True lets Home Assistant remove the device entry and its entities
+    from the registry.
+    """
+    LOGGER.info(
+        f"[{LOG_PREFIX_INIT}] Removing device from registry on user request: "
+        f"{device_entry.name} (identifiers: {device_entry.identifiers})"
+    )
+    return True
