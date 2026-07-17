@@ -42,6 +42,7 @@ class VirtualNetworkGateway(EnOceanGateway):
 
         self._running = threading.Event()
         self._running.clear()
+        self.tcp_thread = None
         self.hass = hass
         self.zeroconf:Zeroconf = None
         self.connected_clients = []
@@ -222,8 +223,14 @@ class VirtualNetworkGateway(EnOceanGateway):
 
 
     def stop_tcp_server(self):
+        """Stop TCP server thread. BLOCKING - do not call from the event loop. (K2)"""
         self._running.clear()
-        self.tcp_thread.join(10)
+        # guard: server may never have been started (M1) and join() must never wait forever
+        if self.tcp_thread is not None and self.tcp_thread.is_alive():
+            self.tcp_thread.join(10)
+            if self.tcp_thread.is_alive():
+                LOGGER.warning(f"[{LOGGING_PREFIX_VIRT_GW}] TCP server thread did not stop within 10s.")
+        self.tcp_thread = None
 
 
     def convert_ip_to_bytes(self, ip_address_str):
@@ -252,12 +259,16 @@ class VirtualNetworkGateway(EnOceanGateway):
         LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] Was started.")
 
 
+    def _unload_blocking(self):
+        """Stop TCP server thread. BLOCKING - called via executor from async_unload. (K2)"""
+        self.stop_tcp_server()
+        LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] Was stopped.")
+
     def unload(self):
-        """Disconnect callbacks established at init time."""
+        """Deprecated synchronous variant of async_unload, kept for compatibility.
+        BLOCKING - do not call from the event loop."""
         if self.dispatcher_disconnect_handle:
             self.dispatcher_disconnect_handle()
             self.dispatcher_disconnect_handle = None
 
-        self.stop_tcp_server()
-
-        LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] Was stopped.")
+        self._unload_blocking()

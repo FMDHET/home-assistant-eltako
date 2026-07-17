@@ -272,8 +272,11 @@ class EltakoBinarySensor(AbstractBinarySensor):
                 return
             
             event_data['pressed'] = decoded.contact == 1
-            
-            self._attr_is_on = self.invert_signal != decoded.contact == 1
+
+            # EnOcean D5-00-01: contact bit 1 = closed, 0 = open. is_on == True => open (device class window)
+            # NOTE: was `self.invert_signal != decoded.contact == 1` which Python chains to
+            # `(invert != contact) and (contact == 1)` => always wrong state for closed windows.
+            self._attr_is_on = self.invert_signal != (decoded.contact == 0)
 
         elif self.dev_eep in [A5_08_01]:
             # Occupancy Sensor
@@ -283,14 +286,16 @@ class EltakoBinarySensor(AbstractBinarySensor):
                 
             event_data['pressed'] = decoded.pir_status == 1
 
-            self._attr_is_on = self.invert_signal != decoded.pir_status == 1
+            # != is XOR; parentheses required, chained comparison broke the inverted case
+            self._attr_is_on = self.invert_signal != (decoded.pir_status == 1)
 
         elif self.dev_eep in [A5_07_01]:
             # LOGGER.debug("[Binary Sensor][%s] Received msg for processing eep %s telegram.", b2s(self.dev_id), self.dev_eep.eep_string)
 
             event_data['pressed'] = decoded.pir_status == 1
 
-            self._attr_is_on = self.invert_signal != decoded.pir_status_on == 1
+            # != is XOR; parentheses required, chained comparison broke the inverted case
+            self._attr_is_on = self.invert_signal != (decoded.pir_status_on == 1)
 
         elif self.dev_eep in [A5_30_01]:
 
@@ -334,7 +339,9 @@ class EltakoBinarySensor(AbstractBinarySensor):
                     event_data['pressed'] = True
                 self._attr_is_on = self.invert_signal != decoded.status_of_wake
             else:
-                raise Exception("[%s %s] EEP %s Unknown description key for A5-30-03", Platform.BINARY_SENSOR, str(self.dev_id), A5_30_03.eep_string)
+                # do not raise: an exception inside value_changed would abort message processing (M6)
+                LOGGER.warning("[%s %s] EEP %s: Unknown description key '%s' for A5-30-03.", Platform.BINARY_SENSOR, str(self.dev_id), A5_30_03.eep_string, str(self.description_key))
+                return
 
         else:
             LOGGER.warning("[%s %s] EEP %s not found for data processing.", Platform.BINARY_SENSOR, str(self.dev_id), self.dev_eep.eep_string)
@@ -350,18 +357,21 @@ class EltakoBinarySensor(AbstractBinarySensor):
             event_data['prev_pressed_buttons'] = prev_pressed_buttons
         # when button released
         if not event_data['pressed']:
-            push_telegram_received_time = self.LAST_RECEIVED_TELEGRAMS[ b2s(self.dev_id), {'push_telegram_received_time_in_sec': -1}]['push_telegram_received_time_in_sec']
+            # K4: use .get() with default (previously crashed with TypeError on every release telegram)
+            push_telegram_received_time = self.LAST_RECEIVED_TELEGRAMS.get( b2s(self.dev_id), {}).get('push_telegram_received_time_in_sec', -1)
             release_telegram_received_time = telegram_received_time
-            pushed_duration = float(release_telegram_received_time - push_telegram_received_time)
 
             if push_telegram_received_time == -1:
-                raise Exception(f"[{Platform.BINARY_SENSOR} {b2(self.dev_id)}] EEP {self.dev_eep.eep_string}: No information about previouse event.")
-        
-            event_data.update({
-                "push_telegram_received_time_in_sec": push_telegram_received_time,
-                "release_telegram_received_time_in_sec": release_telegram_received_time, 
-                "push_duration_in_sec": pushed_duration,
-            })
+                # no previous push telegram known (e.g. HA restarted in between) => push duration cannot be computed.
+                # Do not raise: it would abort the event pipeline. Fire the event with the -1 defaults instead.
+                LOGGER.debug("[%s %s] EEP %s: No information about previous push event. Push duration unknown.", Platform.BINARY_SENSOR, str(self.dev_id), self.dev_eep.eep_string)
+                event_data['push_telegram_received_time_in_sec'] = -1
+            else:
+                event_data.update({
+                    "push_telegram_received_time_in_sec": push_telegram_received_time,
+                    "release_telegram_received_time_in_sec": release_telegram_received_time,
+                    "push_duration_in_sec": float(release_telegram_received_time - push_telegram_received_time),
+                })
 
         self.LAST_RECEIVED_TELEGRAMS[b2s(self.dev_id)] = event_data
         self.hass.bus.fire(event_id, event_data)

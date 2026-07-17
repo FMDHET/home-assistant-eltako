@@ -18,7 +18,7 @@ from homeassistant.components.climate import (
     PRESET_ECO
 )
 from homeassistant import config_entries
-from homeassistant.const import Platform, CONF_TEMPERATURE_UNIT, Platform
+from homeassistant.const import Platform, CONF_TEMPERATURE_UNIT, ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
@@ -153,7 +153,8 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
         # self._attr_target_temperature_low = min_temp
         self._attr_max_temp = max_temp
         self._attr_min_temp = min_temp
-        self._attr_priority = A5_10_06.ControllerPriority.AUTO.value
+        # K5: must be the enum member, NOT `.value` (int) - _send_command reads priority.description/.code
+        self._attr_priority = A5_10_06.ControllerPriority.AUTO
         self._attr_actuator_mode = A5_10_06.HeaterMode.NORMAL
 
         # self._loop = asyncio.get_event_loop()
@@ -230,7 +231,12 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
     async def async_handle_priority_events(self, call):
         LOGGER.debug(f"[climate {self.dev_id}] Event received: {call.data}")
 
-        self._attr_priority = A5_10_06.ControllerPriority.find_by_description(call.data['priority'])
+        priority = A5_10_06.ControllerPriority.find_by_description(call.data.get('priority'))
+        if priority is None:
+            # unknown description (e.g. restored state 'unavailable') => keep a valid enum member (K5)
+            LOGGER.warning(f"[climate {self.dev_id}] Unknown priority '{call.data.get('priority')}' received. Falling back to AUTO.")
+            priority = A5_10_06.ControllerPriority.AUTO
+        self._attr_priority = priority
         if self._attr_priority == A5_10_06.ControllerPriority.THERMOSTAT:
             self._send_command(A5_10_06.HeaterMode.UNKNOWN, 40, A5_10_06.ControllerPriority.HOME_AUTOMATION)   # send 00-00-00-08 to enable thermostat prio
         else:
@@ -262,7 +268,11 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
     async def async_set_temperature(self, **kwargs) -> None:
         """Set new target temperature."""
 
-        new_target_temp = kwargs['temperature']
+        # M3: service can be called without 'temperature' (e.g. only hvac_mode) => no KeyError
+        new_target_temp = kwargs.get(ATTR_TEMPERATURE)
+        if new_target_temp is None:
+            LOGGER.debug(f"[climate {self.dev_id}] set_temperature called without temperature attribute: {kwargs}")
+            return
         LOGGER.debug(f"[climate {self.dev_id}] target temperature changed: to {new_target_temp} (Mode: {self._attr_actuator_mode})")
 
         if self._attr_actuator_mode in [None, A5_10_06.HeaterMode.OFF]:
@@ -279,7 +289,16 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
     def _send_command(self, mode: A5_10_06.HeaterMode, target_temp: float, priority:A5_10_06.ControllerPriority) -> None:
         """Send command to set target temperature."""
         address, _ = self._sender_id
-        if 0 <= target_temp <= 40:
+
+        # K5: defensive guards - values can be int/None after restore or on fresh installations
+        if not isinstance(priority, A5_10_06.ControllerPriority):
+            LOGGER.warning(f"[climate {self.dev_id}] Invalid priority '{priority}'. Falling back to AUTO.")
+            priority = A5_10_06.ControllerPriority.AUTO
+        if not isinstance(mode, A5_10_06.HeaterMode):
+            LOGGER.warning(f"[climate {self.dev_id}] Invalid heater mode '{mode}'. Falling back to NORMAL.")
+            mode = A5_10_06.HeaterMode.NORMAL
+
+        if target_temp is not None and 0 <= target_temp <= 40:
             LOGGER.debug(f"[climate {self.dev_id}] Send status update: target temp: {target_temp}, mode: {mode}, priority: '{priority.description}'")
             msg = A5_10_06(mode, target_temp, current_temp=40, priority=priority).encode_message(address)
             self.send_message(msg)

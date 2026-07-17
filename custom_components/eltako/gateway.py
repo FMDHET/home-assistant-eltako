@@ -1,5 +1,7 @@
-import glob
 """Representation of an Eltako gateway."""
+import glob
+import inspect
+from enum import Enum
 
 from os.path import basename, normpath
 import pytz
@@ -263,10 +265,15 @@ class EnOceanGateway:
 
 
     def reconnect(self):
+        """Restart the bus connection. BLOCKING - never call directly from the event loop,
+        use `await hass.async_add_executor_job(gateway.reconnect)` instead. (K2)"""
         try:
             LOGGER.info("[Gateway] [Id: %d] Connection Restart", self.dev_id)
             self._bus.stop()
-            self._bus.join(10)    # wait until thread is really stopped
+            if self._bus.is_alive():
+                self._bus.join(10)    # wait until thread is really stopped
+                if self._bus.is_alive():
+                    LOGGER.warning("[Gateway] [Id: %d] Bus thread did not stop within 10s. Starting new connection anyway.", self.dev_id)
             LOGGER.debug("[Gateway] [Id: %d] Connection stopped", self.dev_id)
             self._init_bus()
             self._bus.start()
@@ -301,35 +308,38 @@ class EnOceanGateway:
     async def async_service_send_message(self, event, raise_exception=False) -> None:
         """Send an arbitrary message with the provided eep."""
         LOGGER.debug(f"[Service Send Message: {event.service}] Received event data: {event.data}")
-        
+
+        sender_id_str = event.data.get("id", None)
         try:
-            sender_id_str = event.data.get("id", None)
             sender_id:AddressExpression = AddressExpression.parse(sender_id_str)
-        except:
+        except Exception:
             LOGGER.error(f"[Service Send Message: {event.service}] No valid sender id defined. (Given sender id: {sender_id_str})")
             return
 
+        sender_eep_str = event.data.get("eep", None)
         try:
-            sender_eep_str = event.data.get("eep", None)
             sender_eep:EEP = EEP.find(sender_eep_str)
-        except:
-            LOGGER.error(f"[Service Send Message: {event.service}] No valid sender id defined. (Given sender id: {sender_id_str})")
+        except Exception:
+            LOGGER.error(f"[Service Send Message: {event.service}] No valid eep defined. (Given eep: {sender_eep_str})")
             return
-        
+
         # prepare all arguements for eep constructor
-        import inspect
         sig = inspect.signature(sender_eep.__init__)
-        eep_init_args = [param.name for param in sig.parameters.values() if param.kind == param.POSITIONAL_OR_KEYWORD]
-        knargs = {filter_key:event.data[filter_key] for filter_key in eep_init_args if filter_key in event.data and filter_key != 'self'}
+        eep_init_params = [param for param in sig.parameters.values() if param.kind == param.POSITIONAL_OR_KEYWORD and param.name != 'self']
+        knargs = {param.name:event.data[param.name] for param in eep_init_params if param.name in event.data}
         LOGGER.debug(f"[Service Send Message: {event.service}] Provided EEP ({sender_eep.__name__}) args: {knargs})")
-        uknargs = {filter_key:0 for filter_key in eep_init_args if filter_key not in event.data and filter_key != 'self'}
-        LOGGER.debug(f"[Service Send Message: {event.service}] Missing EEP ({sender_eep.__name__}) args: {uknargs})")
+        # fill missing parameters with 0, EXCEPT enum-typed defaults (e.g. 'priority', 'mode'):
+        # replacing an enum default with 0 crashes later in encode_message ('int' has no attribute 'code')
+        uknargs = {param.name:(param.default if isinstance(param.default, Enum) else 0)
+                   for param in eep_init_params if param.name not in event.data}
+        # NOTE: log enum members by name - DefaultEnum.__repr__ in eltako14bus 0.0.73 is broken (UnboundLocalError)
+        uknargs_log = {k:(v.name if isinstance(v, Enum) else v) for k,v in uknargs.items()}
+        LOGGER.debug(f"[Service Send Message: {event.service}] Missing EEP ({sender_eep.__name__}) args: {uknargs_log})")
         eep_args = knargs
         eep_args.update(uknargs)
-            
-        eep:EEP = sender_eep(**eep_args)
 
         try:
+            eep:EEP = sender_eep(**eep_args)
             # create message
             msg = eep.encode_message(sender_id[0])
             LOGGER.debug(f"[Service Send Message: {event.service}] Generated message: {msg} Serialized: {msg.serialize().hex()}")
@@ -349,15 +359,33 @@ class EnOceanGateway:
         dispatcher_send(self.hass, ELTAKO_GLOBAL_EVENT_BUS_ID, {'gateway':self, 'esp2_msg': msg})
 
 
-    def unload(self):
-        """Disconnect callbacks established at init time."""
+    async def async_unload(self):
+        """Disconnect callbacks and stop the bus thread without blocking the event loop. (K2)"""
         if self.dispatcher_disconnect_handle:
-            self._reading_memory_of_devices_is_running.clear()
-            self._bus.stop()
-            self._bus.join()
-            LOGGER.debug("[Gateway] [Id: %d] Was stopped.", self.dev_id)
             self.dispatcher_disconnect_handle()
             self.dispatcher_disconnect_handle = None
+        self._reading_memory_of_devices_is_running.clear()
+        # joining the bus thread is blocking => run in executor so that HA does not freeze
+        await self.hass.async_add_executor_job(self._unload_blocking)
+        LOGGER.debug("[Gateway] [Id: %d] Was stopped.", self.dev_id)
+
+    def _unload_blocking(self):
+        """Stop the bus thread. BLOCKING - called via executor from async_unload."""
+        self._bus.stop()
+        if self._bus.is_alive():
+            self._bus.join(10)    # never wait forever: a hanging bus thread would block HA shutdown/reload
+            if self._bus.is_alive():
+                LOGGER.warning("[Gateway] [Id: %d] Bus thread did not stop within 10s.", self.dev_id)
+
+    def unload(self):
+        """Deprecated synchronous variant of async_unload, kept for compatibility.
+        BLOCKING - do not call from the event loop."""
+        if self.dispatcher_disconnect_handle:
+            self.dispatcher_disconnect_handle()
+            self.dispatcher_disconnect_handle = None
+        self._reading_memory_of_devices_is_running.clear()
+        self._unload_blocking()
+        LOGGER.debug("[Gateway] [Id: %d] Was stopped.", self.dev_id)
 
 
     def _callback_send_message_to_serial_bus(self, msg):
@@ -380,44 +408,51 @@ class EnOceanGateway:
 
         This is the callback function called by python-enocan whenever there
         is an incoming message.
+
+        IMPORTANT: This runs inside the serial bus thread. The eltakobus library only
+        handles SerialException/IOError in its receiver loop - any other exception
+        would terminate the receiver thread and the integration would stop receiving
+        messages entirely until Home Assistant is restarted. (K1)
         """
+        try:
+            if type(message) not in [EltakoPoll]:
+                LOGGER.debug("[Gateway] [Id: %d] Received message: %s", self.dev_id, message)
+                self.report_message_stats()
 
-        if type(message) not in [EltakoPoll]:
-            LOGGER.debug("[Gateway] [Id: %d] Received message: %s", self.dev_id, message)
-            self.report_message_stats()
-
-            if message.body[:2] == b'\x8b\x98':
-                LOGGER.debug("[Gateway] [Id: %d] Received base id: %s", self.dev_id, b2s(message.body[2:6]))
-                self._attr_base_id = AddressExpression( (message.body[2:6], None) )
-                self._fire_base_id_change_handlers(self.base_id)
-
-
-            # only send messages to HA when base id is known
-            if int.from_bytes(self.base_id[0]) != 0:
-
-                # Send message on local bus. Only devices configure to this gateway will receive those message.
-                event_id = config_helpers.get_bus_event_type(gateway_id=self.dev_id, function_id=SIGNAL_RECEIVE_MESSAGE)
-                dispatcher_send(self.hass, event_id, {'gateway':self, 'esp2_msg': message})
-
-                if type(message) not in [EltakoDiscoveryRequest]:
-                    # Send message on global bus with external/outside address
-                    global_msg = prettify(message)
-                    # do not change discovery and memory message addresses, base id will be sent upfront so that the receive known to whom the message belong
-                    if type(message) in [EltakoWrappedRPS, EltakoWrapped4BS, RPSMessage, Regular1BSMessage, Regular4BSMessage, EltakoMessage]:
-                        byte_adr = message.body[-5:-1]
-                        # LOGGER.debug(f"[====>>> address: adr: {b2s(byte_adr)}")
-                        address = AddressExpression((byte_adr, None))
-                        if address.is_local_address():
-                            address = address.add(self.base_id)
-                            ba = bytearray(global_msg.body)
-                            ba[-5:-1] = bytearray(address[0])
-                            # LOGGER.debug(f"[====>>> old byte array: {b2s(message.body)}")
-                            # LOGGER.debug(f"[====>>> new byte array: {b2s(ba)}")
-                            global_msg = prettify(ESP2Message( ba ))
+                if message.body[:2] == b'\x8b\x98':
+                    LOGGER.debug("[Gateway] [Id: %d] Received base id: %s", self.dev_id, b2s(message.body[2:6]))
+                    self._attr_base_id = AddressExpression( (message.body[2:6], None) )
+                    self._fire_base_id_change_handlers(self.base_id)
 
 
-                    LOGGER.debug("[Gateway] [Id: %d] Forwared message (%s) in global bus", self.dev_id, global_msg)
-                    dispatcher_send(self.hass, ELTAKO_GLOBAL_EVENT_BUS_ID, {'gateway':self, 'esp2_msg': global_msg})
+                # only send messages to HA when base id is known
+                if int.from_bytes(self.base_id[0]) != 0:
+
+                    # Send message on local bus. Only devices configure to this gateway will receive those message.
+                    event_id = config_helpers.get_bus_event_type(gateway_id=self.dev_id, function_id=SIGNAL_RECEIVE_MESSAGE)
+                    dispatcher_send(self.hass, event_id, {'gateway':self, 'esp2_msg': message})
+
+                    if type(message) not in [EltakoDiscoveryRequest]:
+                        # Send message on global bus with external/outside address
+                        global_msg = prettify(message)
+                        # do not change discovery and memory message addresses, base id will be sent upfront so that the receive known to whom the message belong
+                        if type(message) in [EltakoWrappedRPS, EltakoWrapped4BS, RPSMessage, Regular1BSMessage, Regular4BSMessage, EltakoMessage]:
+                            byte_adr = message.body[-5:-1]
+                            # LOGGER.debug(f"[====>>> address: adr: {b2s(byte_adr)}")
+                            address = AddressExpression((byte_adr, None))
+                            if address.is_local_address():
+                                address = address.add(self.base_id)
+                                ba = bytearray(global_msg.body)
+                                ba[-5:-1] = bytearray(address[0])
+                                # LOGGER.debug(f"[====>>> old byte array: {b2s(message.body)}")
+                                # LOGGER.debug(f"[====>>> new byte array: {b2s(ba)}")
+                                global_msg = prettify(ESP2Message( ba ))
+
+
+                        LOGGER.debug("[Gateway] [Id: %d] Forwared message (%s) in global bus", self.dev_id, global_msg)
+                        dispatcher_send(self.hass, ELTAKO_GLOBAL_EVENT_BUS_ID, {'gateway':self, 'esp2_msg': global_msg})
+        except Exception:
+            LOGGER.exception("[Gateway] [Id: %d] Unhandled error while processing received message: %s", self.dev_id, message)
             
     
     @property

@@ -3,6 +3,7 @@ import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
+from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.dispatcher import dispatcher_connect
 from homeassistant.helpers.reload import async_reload_integration_platforms
@@ -86,14 +87,21 @@ def set_gateway_to_hass(hass: HomeAssistant, gateway: EnOceanGateway) -> None:
     g_id = "gateway_"+str(gateway.dev_id)
     hass.data[DATA_ELTAKO][g_id] = gateway
 
-def unload_gateway(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+async def async_unload_gateway(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
 
     gateway:EnOceanGateway = get_gateway_from_hass(hass, config_entry)
     if gateway is not None:
 
         LOGGER.info(f"[{LOG_PREFIX_INIT}] Unload {gateway.dev_name} and all its supported devices!")
-        gateway.unload()
-    
+
+        # K3: remove the send-message service registered for this gateway
+        service_name = config_helpers.get_bus_event_type(gateway_id=gateway.dev_id, function_id=SIGNAL_SEND_MESSAGE_SERVICE)
+        if hass.services.has_service(DOMAIN, service_name):
+            hass.services.async_remove(DOMAIN, service_name)
+
+        # K2: stopping the gateway joins its bus thread => must not block the event loop
+        await gateway.async_unload()
+
         gw_id = "gateway_"+str(gateway.dev_id)
         if gw_id in hass.data[DATA_ELTAKO]:
             del hass.data[DATA_ELTAKO][gw_id]
@@ -113,16 +121,18 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
     # Check domain
     if config_entry.domain != DOMAIN:
-        LOGGER.warning(f"[{LOG_PREFIX_INIT}] Ooops, received configuration entry of wrong domain '%s' (expected: '')!", config_entry.domain, DOMAIN)
-        return
+        LOGGER.warning(f"[{LOG_PREFIX_INIT}] Ooops, received configuration entry of wrong domain '%s' (expected: '%s')!", config_entry.domain, DOMAIN)
+        return False
 
-    
+
     # Read the config
     config = await config_helpers.async_get_home_assistant_config(hass, CONFIG_SCHEMA)
 
     # Check if gateway ids are unique
+    # K6: ConfigEntryError/ConfigEntryNotReady instead of bare returns/Exceptions so that
+    # HA shows a proper error message resp. retries the setup automatically.
     if not config_helpers.config_check_gateway(config):
-        raise Exception(f"[{LOG_PREFIX_INIT}] Gateway Ids are not unique.")
+        raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] Gateway Ids are not unique.")
 
 
     # set config for global access
@@ -131,41 +141,36 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     # print whole eltako configuration
     LOGGER.debug(f"[{LOG_PREFIX_INIT}] config: {config}\n")
 
-    
+
     general_settings = config_helpers.get_general_settings_from_configuration(hass)
     # Initialise the gateway
     # get base_id from user input
     if CONF_GATEWAY_DESCRIPTION not in config_entry.data.keys():
-        LOGGER.warning("[{LOG_PREFIX}] Ooops, device information for gateway is not available. Try to delete and recreate the gateway.")
-        return
+        raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] Device information for gateway is not available. Try to delete and recreate the gateway.")
     gateway_description = config_entry.data[CONF_GATEWAY_DESCRIPTION]    # from user input
 
     if not ('(' in gateway_description and ')' in gateway_description):
-        LOGGER.warning("[{LOG_PREFIX}] Ooops, no base id of gateway available. Try to delete and recreate the gateway.")
-        return
-    
+        raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] No id of gateway available (description: '{gateway_description}'). Try to delete and recreate the gateway.")
+
     gateway_id = config_helpers.get_id_from_gateway_name(gateway_description)
 
     # get home assistant configuration section matching base_id
     gateway_config = await config_helpers.async_find_gateway_config_by_id(gateway_id, hass, CONFIG_SCHEMA)
     if not gateway_config:
-        LOGGER.warning(f"[{LOG_PREFIX_INIT}] Ooops, no gateway configuration found in '/homeassistant/configuration.yaml'.")
-        return
-    
+        raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] No gateway configuration found in '/homeassistant/configuration.yaml' for gateway id {gateway_id}.")
+
     # get serial path info
     if CONF_SERIAL_PATH not in config_entry.data.keys():
-        LOGGER.warning("[{LOG_PREFIX}] Ooops, no information about serial path available for gateway.")
-        return
+        raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] No information about serial path available for gateway. Try to delete and recreate the gateway.")
     gateway_serial_path = config_entry.data[CONF_SERIAL_PATH]
 
     # only transceiver can send teach-in telegrams
     gateway_device_type = GatewayDeviceType.find(gateway_config[CONF_DEVICE_TYPE])    # from configuration
     if gateway_device_type is None:
-        LOGGER.error(f"[{LOG_PREFIX_INIT}] USB device {gateway_config[CONF_DEVICE_TYPE]} is not supported!!!")
-        return False
+        raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] USB device {gateway_config[CONF_DEVICE_TYPE]} is not supported!!!")
     if GatewayDeviceType.is_lan_gateway(gateway_device_type):
         if gateway_config.get(CONF_GATEWAY_ADDRESS, None) is None:
-            raise Exception(f"[{LOG_PREFIX_INIT}] Missing field '{CONF_GATEWAY_ADDRESS}' for LAN Gateway (id: {gateway_id})")
+            raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] Missing field '{CONF_GATEWAY_ADDRESS}' for LAN Gateway (id: {gateway_id})")
 
     general_settings[CONF_ENABLE_TEACH_IN_BUTTONS] = True # GatewayDeviceType.is_transceiver(gateway_device_type) # should only be disabled for decentral gateways
 
@@ -183,12 +188,20 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     else:
         gateway = EnOceanGateway(general_settings, hass, gateway_id, gateway_device_type, gateway_serial_path, baud_rate, port, gateway_base_id, gateway_name, auto_reconnect, message_delay, config_entry)
 
-    
-    await gateway.async_setup()
+    # K6: connection problems are usually temporary (e.g. USB stick not ready yet) => let HA retry
+    try:
+        await gateway.async_setup()
+    except Exception as e:
+        raise ConfigEntryNotReady(f"[{LOG_PREFIX_INIT}] Could not start gateway (id: {gateway_id}, serial path: {gateway_serial_path}): {e}") from e
+
     set_gateway_to_hass(hass, gateway)
 
-    hass.data[DATA_ELTAKO][DATA_ENTITIES] = {}
-    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+    try:
+        await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+    except Exception:
+        # do not leak a running bus thread when the platform setup fails
+        await async_unload_gateway(hass, config_entry)
+        raise
 
     # hass.http.register_static_path(
     #     "/eltako",
@@ -241,6 +254,11 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Unload Eltako config entry."""
 
-    unload_gateway(hass, config_entry)
+    # K3: unload all platforms so that entities and their dispatcher connections are
+    # cleanly removed. Otherwise every reload leaks entities/listeners and produces
+    # duplicate events and unique_id collisions.
+    unload_platforms_ok = await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
 
-    return True
+    await async_unload_gateway(hass, config_entry)
+
+    return unload_platforms_ok
