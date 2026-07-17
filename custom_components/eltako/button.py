@@ -136,7 +136,8 @@ class GatewayReconnectButton(AbstractButton):
 
     async def async_press(self) -> None:
         """Reconnect serial bus"""
-        self.gateway.reconnect()
+        # reconnect() blocks (thread join + serial open) => must not run inside the event loop (K2)
+        await self.hass.async_add_executor_job(self.gateway.reconnect)
 
 
 class GatewayReadAllDevicesButton(AbstractButton):
