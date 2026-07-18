@@ -1,5 +1,10 @@
 # Changes and Feature List
 
+## Version 2.1.2 — LAN-Gateway: Verbindungsabbruch ohne Wiederverbindung behoben
+* **LAN-Gateway hängt nicht mehr dauerhaft nach Verbindungsabbruch (nur HA-Neustart half).** Ursache: Die Bibliothek `esp2_gateway_adapter` (bis einschl. 0.2.21) erkennt es nicht, wenn die Gegenstelle die TCP-Verbindung *sauber* schließt (FIN, z. B. wenn sich ein zweiter Client mit dem Single-Client-Gateway verbindet) — der Empfangs-Thread drehte endlos auf der toten Verbindung, ohne Reconnect und ohne Statuswechsel in HA. Die Integration bringt jetzt eine gehärtete Kommunikator-Klasse mit (`tcp2serial_hardened.py`), die den Fall erkennt und nach `reconnection_timeout` (Default 15 s) neu verbindet. Mit Regressionstest abgesichert (`tests/test_tcp_connection_hardening.py`).
+* **Kernel-TCP-Keepalive aktiviert:** Auch still abgerissene Verbindungen (NAT-Idle-Timeout, Stromausfall am Gateway) werden nun vom Betriebssystem erkannt.
+* `esp2_gateway_adapter` von 0.2.15 auf **0.2.21** angehoben (u. a. Empfangs-Thread als Daemon-Thread → kein Hängen beim HA-Shutdown; ACK-Antworten fluten das Log nicht mehr als Warnung).
+
 ## Version 2.1.1 — Climate, LAN-TCP stability & device removal
 * **LAN-Gateway (mgw-lan/EUL etc.): stabilere TCP-Verbindung.** Nach einem Verbindungsabbruch wird jetzt nach **15 s** statt 60 s neu verbunden und ein stillgelegter Kanal nach **30 s** statt 60 s erkannt. Beides pro Gateway per YAML einstellbar (`reconnection_timeout:`, `tcp_keep_alive_timeout:`).
 * **Geräte lassen sich jetzt über die HA-Oberfläche löschen** (Gerät → „Gerät löschen"). Noch in der YAML konfigurierte Geräte kommen beim nächsten Reload zurück (erwartetes Verhalten bei YAML-Integrationen).
