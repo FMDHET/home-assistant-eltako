@@ -234,13 +234,6 @@ class EltakoBinarySensor(AbstractBinarySensor):
             })
             
 
-            # send event id containing button positions
-            # event_id = config_helpers.get_bus_event_type(self.gateway.dev_id, EVENT_BUTTON_PRESSED, msg.address, '-'.join(prev_pressed_buttons+pressed_buttons))
-            # event_data['id'] = event_id
-            # LOGGER.debug("[%s %s] Send event: %s, pressed_buttons: '%s'", Platform.BINARY_SENSOR, str(self.dev_id), event_id, json.dumps(prev_pressed_buttons+pressed_buttons))
-            # self.hass.bus.fire(event_id, event_data)
-
-
             # Show status change in HA. It will only for the moment when the button is pushed down.
             # Change first button status so that automations can request it after event was fired.
             # != is XOR
@@ -375,6 +368,19 @@ class EltakoBinarySensor(AbstractBinarySensor):
 
         self.LAST_RECEIVED_TELEGRAMS[b2s(self.dev_id)] = event_data
         self.hass.bus.fire(event_id, event_data)
+
+        # Wall switches additionally fire a button-specific event (e.g. `..._rt`,
+        # `..._lt-rb` becomes `..._lt_rb`) so automations can trigger on a single
+        # button without conditions. (Restored pre-v2.0.0 behavior, see changes.md.)
+        # On release no button info is in the telegram => use the previously pressed buttons.
+        if self.dev_eep in [F6_02_01, F6_02_02]:
+            buttons = event_data['pressed_buttons'] or event_data['prev_pressed_buttons']
+            if buttons:
+                button_event_id = config_helpers.get_bus_event_type(self.gateway.dev_id, EVENT_BUTTON_PRESSED, msg.address, '-'.join(buttons))
+                # copy so the button-specific id does not leak into the already fired base event
+                button_event_data = dict(event_data, id=button_event_id)
+                LOGGER.debug("[%s %s] Send button-specific event: %s (buttons: %s)", Platform.BINARY_SENSOR, str(self.dev_id), button_event_id, json.dumps(buttons))
+                self.hass.bus.fire(button_event_id, button_event_data)
 
 class GatewayConnectionState(AbstractBinarySensor):
     """Protocols last time when message received"""
