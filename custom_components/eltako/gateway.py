@@ -18,7 +18,8 @@ from eltakobus.device import request_memory_of_all_devices
 from eltakobus import locking
 
 from esp2_gateway_adapter.esp3_serial_com import ESP3SerialCommunicator
-from esp2_gateway_adapter.esp3_tcp_com import TCP2SerialCommunicator
+
+from .tcp2serial_hardened import HardenedTCP2SerialCommunicator
 
 from homeassistant.core import HomeAssistant
 from homeassistant.const import CONF_MAC
@@ -206,7 +207,9 @@ class EnOceanGateway:
                                                auto_reconnect=self._auto_reconnect)
             
         elif GatewayDeviceType.is_lan_gateway(self.dev_type) and not GatewayDeviceType.is_esp2_gateway(self.dev_type):
-            self._bus = TCP2SerialCommunicator(host=self.serial_path,
+            # HardenedTCP2SerialCommunicator: detects graceful remote close (EOF)
+            # and enables kernel TCP keep-alive (see tcp2serial_hardened.py, K8).
+            self._bus = HardenedTCP2SerialCommunicator(host=self.serial_path,
                                                port=self.port,
                                                callback=self._callback_receive_message_from_serial_bus,
                                                esp2_translation_enabled=True,
