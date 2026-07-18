@@ -161,7 +161,8 @@ class EltakoBinarySensor(AbstractBinarySensor):
         
         try:
             decoded = self.dev_eep.decode_message(msg)
-            LOGGER.debug("decoded : %s", json.dumps(decoded.__dict__))
+            # no json.dumps: runs per telegram, %s defers str() until debug is actually enabled
+            LOGGER.debug("decoded : %s", decoded.__dict__)
             # LOGGER.debug("msg : %s, data: %s", type(msg), msg.data)
         except Exception as e:
             LOGGER.warning("[%s %s] Could not decode message for eep %s does not fit to message type %s (org %s)", 
@@ -189,8 +190,13 @@ class EltakoBinarySensor(AbstractBinarySensor):
         }
 
 
+        # single flag instead of re-testing the EEP list again 180 lines below:
+        # keeps the two wall-switch spots in sync when an EEP is added (review finding)
+        fire_button_specific_event = False
+
         # wall switches
         if self.dev_eep in [F6_02_01, F6_02_02]:
+            fire_button_specific_event = True
             # LOGGER.debug("[Binary Sensor][%s] Received msg for processing eep %s telegram.", b2s(self.dev_id), self.dev_eep.eep_string)
             pressed_buttons = []
             pressed = decoded.energy_bow == 1
@@ -233,13 +239,6 @@ class EltakoBinarySensor(AbstractBinarySensor):
                 "rocker_second_action": decoded.rocker_second_action,
             })
             
-
-            # send event id containing button positions
-            # event_id = config_helpers.get_bus_event_type(self.gateway.dev_id, EVENT_BUTTON_PRESSED, msg.address, '-'.join(prev_pressed_buttons+pressed_buttons))
-            # event_data['id'] = event_id
-            # LOGGER.debug("[%s %s] Send event: %s, pressed_buttons: '%s'", Platform.BINARY_SENSOR, str(self.dev_id), event_id, json.dumps(prev_pressed_buttons+pressed_buttons))
-            # self.hass.bus.fire(event_id, event_data)
-
 
             # Show status change in HA. It will only for the moment when the button is pushed down.
             # Change first button status so that automations can request it after event was fired.
@@ -375,6 +374,22 @@ class EltakoBinarySensor(AbstractBinarySensor):
 
         self.LAST_RECEIVED_TELEGRAMS[b2s(self.dev_id)] = event_data
         self.hass.bus.fire(event_id, event_data)
+
+        # Wall switches additionally fire a button-specific event (e.g. `..._rt`,
+        # `..._lt-rb` becomes `..._lt_rb`) so automations can trigger on a single
+        # button without conditions. (Restored pre-v2.0.0 behavior, see changes.md.)
+        # On release no button info is in the telegram => use the previously pressed buttons.
+        if fire_button_specific_event:
+            # sorted: F6-02 reports two-button chords in contact-closure order, so the
+            # same physical combination could otherwise alternate between `..._lt_rb`
+            # and `..._rb_lt` (review finding). Payload order stays untouched.
+            buttons = sorted(event_data['pressed_buttons'] or event_data['prev_pressed_buttons'])
+            if buttons:
+                button_event_id = config_helpers.get_bus_event_type(self.gateway.dev_id, EVENT_BUTTON_PRESSED, msg.address, '-'.join(buttons))
+                # copy so the button-specific id does not leak into the already fired base event
+                button_event_data = dict(event_data, id=button_event_id)
+                LOGGER.debug("[%s %s] Send button-specific event: %s (buttons: %s)", Platform.BINARY_SENSOR, str(self.dev_id), button_event_id, buttons)
+                self.hass.bus.fire(button_event_id, button_event_data)
 
 class GatewayConnectionState(AbstractBinarySensor):
     """Protocols last time when message received"""

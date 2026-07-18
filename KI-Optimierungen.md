@@ -81,7 +81,7 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
   - [sensor.py:876/924/968](custom_components/eltako/sensor.py#L876), [binary_sensor.py:379](custom_components/eltako/binary_sensor.py#L379) i.V.m. [gateway.py:118-136](custom_components/eltako/gateway.py#L118-L136): Gateway-Handler-Listen werden nie bereinigt; Registrierung feuert sofort im Konstruktor (vor `async_added_to_hass`).
   **Fix:** Registrierung nach `async_added_to_hass` verschieben, `self.async_on_remove(...)`-Muster; Remove-Methoden im Gateway ergänzen.
 
-- ☐ **H8 — Virtual Network Gateway: TCP-Server fragil (Leak/OOM/dauerhaft tot)** · Aufwand: L
+- ☑ **H8 — Virtual Network Gateway: TCP-Server fragil (Leak/OOM/dauerhaft tot)** · Aufwand: L — **ERLEDIGT 2026-07-18 (v2.1.3)** *(alle Punkte a–d + Review-Befunde: Generation-Token pro Serverlauf gegen Zombie-Thread-Restart-Race, Lifecycle-Lock gegen Unload-vs-Reconnect-Race; Funktionstests in `tests/test_virtual_network_gateway.py`)*
   [virtual_network_gateway.py:86-200](custom_components/eltako/virtual_network_gateway.py#L86-L200):
   a) `bind()` ohne `SO_REUSEADDR` und ohne try/except → nach Reconnect `EADDRINUSE`, Thread stirbt, `_running` bleibt `True` → Server bis Neustart tot.
   b) Race: Client-Thread löscht Queue vor `connected_clients.remove()` → `KeyError` in `_forward_message` im Loop.
@@ -113,7 +113,7 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
 - ☐ **M8 — `event.data['pressed_buttons']` ohne Guard** — [sensor.py:391-393](custom_components/eltako/sensor.py#L391-L393); fremde/manuell gefeuerte Events → `KeyError`. `.get(..., [])`. · S
 - ☐ **M9 — `get_id_from_gateway_name` crasht bei abweichenden Namen** — [config_helpers.py:177-178](custom_components/eltako/config_helpers.py#L177-L178) (`IndexError`/`ValueError`, z. B. Float-Id `1.0`); plus harte Key-Zugriffe [config_helpers.py:87/98/117-125](custom_components/eltako/config_helpers.py#L117-L125) (`KeyError` statt Fehlermeldung). Regex-Parsing mit `None`-Rückgabe; `.get(...)` mit Defaults. · M
 - ☐ **M10 — Config Flow: `TypeError` bei `None`-Gateway-Config + Substring-Matching** — [config_flow.py:99-104](custom_components/eltako/config_flow.py#L99-L104), [config_flow.py:144-151](custom_components/eltako/config_flow.py#L144-L151) (`'lan' in name` matcht z. B. „Planung"); None-Guard, Gerätetyp aus YAML per Id ermitteln. · M
-- ☐ **M11 — VNG: `service_info`-`UnboundLocalError`, `zeroconf=None`-Pfad** — [virtual_network_gateway.py:172-197](custom_components/eltako/virtual_network_gateway.py#L172-L197); Variablen vorinitialisieren, Unregister nur nach erfolgreicher Registrierung. · S
+- ☑ **M11 — VNG: `service_info`-`UnboundLocalError`, `zeroconf=None`-Pfad** — Variablen vorinitialisieren, Unregister nur nach erfolgreicher Registrierung. · S *(mit H8 erledigt, 2026-07-18)*
 - ☐ **M12 — `datetime.py`: tote Plattform mit garantierten Crashes** — [datetime.py:54/64/84-88](custom_components/eltako/datetime.py#L54): Handler-Registrierung vor `super().__init__`, `datetime.strptime` auf Modul, sync `set_value` an `hass.create_task` übergeben. Datei entfernen oder korrigieren, bevor jemand die Plattform aktiviert. · S
 - ☐ **M13 — `device_info.model` crasht bei `dev_eep=None`** — [device.py:64-75](custom_components/eltako/device.py#L64-L75); Guard: `self.dev_eep.eep_string if self.dev_eep else None`. · S
 - ☐ **M14 — Climate: toter Periodik-Task (auskommentiert)** — [climate.py:159-160/200-218](custom_components/eltako/climate.py#L159-L218); bei Reaktivierung Task-Leak/Race. Sauber implementieren (`entry.async_create_background_task` + Cancel) oder Code entfernen. · M
@@ -127,7 +127,7 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
 - ☐ **N5 — `cv.Number` ist kein öffentliches HA-API** — [schema.py:58/252-274](custom_components/eltako/schema.py#L58): funktioniert nur durch internen Re-Export; zudem lässt es Floats durch (→ M9). `vol.Coerce(int)`/`cv.positive_int`. · S
 - ☐ **N6 — Logging-Format-Fehler** — [config_flow.py:160-163](custom_components/eltako/config_flow.py#L160-L163), [eltako_integration_init.py:116](custom_components/eltako/eltako_integration_init.py#L116): erzeugen „--- Logging error ---"-Tracebacks, verdecken echte Fehler. · S
 - ☑ **N7 — Service `send_message`: bare `except:`, EEP-Konstruktor außerhalb try, Copy-Paste-Fehlermeldung, `import inspect` in Funktion** — [gateway.py:301-341](custom_components/eltako/gateway.py#L301-L341). · S *(erledigt; zusätzlich: fehlende EEP-Parameter zerstören keine Enum-Defaults mehr — `priority=0`-Crash behoben)*
-- ☐ **N8 — `LAST_RECEIVED_TELEGRAMS` als Klassen-Dict** — [binary_sensor.py:121](custom_components/eltako/binary_sensor.py#L121): über alle Gateways geteilt, nie geleert → Vermischung bei Multi-Gateway, Mini-Leak. Instanz-/Gateway-bezogen. · S
+- ☐ **N8 — `LAST_RECEIVED_TELEGRAMS` als Klassen-Dict** — [binary_sensor.py:121](custom_components/eltako/binary_sensor.py#L121): über alle Gateways geteilt, nie geleert → Vermischung bei Multi-Gateway, Mini-Leak. Instanz-/Gateway-bezogen. · S *(Review 2026-07-18: betrifft seit v2.1.3 zusätzlich das knopfspezifische Release-Event — bei gleichem Taster auf zwei Gateways verliert die zweite Entity ihr Release-Event. Fix: Instanz-Attribut statt Klassen-Dict.)*
 - ☐ **N9 — Sensor-Kleinkram** — [sensor.py:580](custom_components/eltako/sensor.py#L580) (`msg.data[3]` ohne Längencheck), [sensor.py:306](custom_components/eltako/sensor.py#L306) (Weather-Station ignoriert Nutzernamen), [sensor.py:362-363](custom_components/eltako/sensor.py#L362-L363) (VOC/Language harte Key-Zugriffe). · S
 - ☐ **N10 — Toter/riskanter Code entfernen** — auskommentierte Panel-Blöcke ([eltako_integration_init.py:193-235](custom_components/eltako/eltako_integration_init.py#L193-L235), `register_static_path` wurde in HA 2025.7 entfernt!), `import glob` vor Docstring ([gateway.py:1](custom_components/eltako/gateway.py#L1)), doppelte `dev_id`-Property ([device.py:139/149](custom_components/eltako/device.py#L139)), `get_entity_from_hass` (ungenutzt, nutzt internes HA-API, [device.py:196-204](custom_components/eltako/device.py#L196-L204)), tote `validate_ids_of_climate` ([climate.py:91-96](custom_components/eltako/climate.py#L91-L96)). · M
 
@@ -182,12 +182,19 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 
 **Testergebnis nach Phase 3: 138 Tests → 3 Failures, 0 Errors** (unverändert die 3 Rocker-Switch-Failures).
 
-### ☐ Phase 4 — Virtual Network Gateway härten (H8, M11)
-- 4.1 bind/DNS-Fehlerbehandlung + SO_REUSEADDR + `_running`-Cleanup
-- 4.2 Lock/Reihenfolge für Client-Listen und Queues
-- 4.3 Socket-Timeouts + bounded Queues + Client-Cleanup beim Stop
-- 4.4 M11: service_info/zeroconf-Guards
-- *(Falls das virtuelle Gateway bei dir gar nicht in Benutzung ist, kann diese Phase nach hinten — bitte kurz bestätigen.)*
+### ☑ Phase 4 — Virtual Network Gateway härten (H8, M11) — **ERLEDIGT 2026-07-18 (v2.1.3)**
+- ☑ 4.1 bind/DNS-Fehlerbehandlung + SO_REUSEADDR + `_running`-Cleanup im finally
+- ☑ 4.2 Snapshot-Iteration + Cleanup-Reihenfolge für Client-Listen und Queues
+- ☑ 4.3 Socket-Timeouts (10 s) + bounded Queues (1000, drop-on-full) + Client-Cleanup beim Stop
+- ☑ 4.4 M11: service_info/zeroconf-Guards
+- *(VNG ist beim Nutzer in Benutzung — bestätigt 2026-07-18.)*
+
+**Adversariales Review (8 Finder-Winkel + 1-Vote-Verify):** 4 CONFIRMED-Befunde, alle eingearbeitet:
+- **Generation-Token:** Zombie-Server-Thread (Join-Timeout beim Stop) konnte das geteilte `_running` clearen und die Clients des NEU gestarteten Servers schließen → jede Generation bekommt jetzt ein eigenes Stop-Event; Shared-Cleanup nur, solange der Thread die aktuelle Generation ist.
+- **Lifecycle-Lock + `_shutdown`-Flag:** paralleles `stop_tcp_server` (Unload vs. Reconnect-Button) konnte `AttributeError` werfen (Unload schlug fehl) bzw. den Server auf einem entladenen Entry wiederbeleben.
+- **Chord-Event-IDs sortiert:** F6-02 meldet Zwei-Tasten-Akkorde in Kontakt-Schließreihenfolge → gleiche Kombination erzeugte mal `.._lt_rb`, mal `.._rb_lt`.
+- Härtung: `serialize()` vor `sendall` (eine defekte Message trennt nicht mehr alle Clients), errno-Debug-Log im OSError-Pfad, Lazy-Logging auf Hot-Paths.
+- REFUTED (geprüft, kein Fix nötig): Gateway-Info-Timeout-Stapelung (TCP-Sendepuffer), SO_REUSEADDR-Windows-Testbedenken (empirisch widerlegt), historische Chord-ID-Formel (beweisbar identisch).
 
 ### ☑ Phase 5 — Climate-Funktionsfehler (H11, M2, M5) — **ERLEDIGT 2026-07-17**
 - ☑ H11 Cooling-Kette, ☑ M2 TURN_ON/OFF (+ Review-Fix F1), ☑ M5 Restore, ☑ M3 (schon Phase 1), ⏸️ M14 (Hardware nötig)
@@ -218,9 +225,7 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 
 ## 3a. Offene Produktentscheidungen (bitte entscheiden)
 
-1. **Rocker-Switch: 1 oder 2 Events pro Telegramm?**
-   Die Tests (`test_binary_sensor_F6_02_01/02.test_binary_sensor_rocker_switch`) erwarten **2 Events** pro Tastendruck: ein Event für den gesamten Schalter und ein button-spezifisches Event (Suffix z. B. `_rt`). Der Code feuert seit einer früheren Änderung nur noch **1 Event** — der button-spezifische Teil ist auskommentiert ([binary_sensor.py:237-241](custom_components/eltako/binary_sensor.py#L237-L241)). `changes.md` (v2.0.0) erwähnt „Button event ids changed => INCOMPATIBILTY".
-   **Entscheidung nötig:** (a) button-spezifische Events wieder aktivieren (Tests werden grün, ggf. Doppel-Trigger in bestehenden Automationen) oder (b) Tests an das 1-Event-Verhalten anpassen. → Bis dahin bleiben 3 Test-Failures stehen.
+1. ~~**Rocker-Switch: 1 oder 2 Events pro Telegramm?**~~ **ENTSCHIEDEN 2026-07-18 (v2.1.3): Variante (a), 2 Events.** Das button-spezifische Event (Suffix z. B. `_rt`) ist reaktiviert — Prä-v2.0.0-Automationen funktionieren wieder; die 3 Test-Failures sind Geschichte (Suite seither komplett grün). Akkord-IDs werden sortiert gefeuert (`_lt_rb`, nie `_rb_lt`), siehe Phase-4-Review.
 
 2. **D5-00-01-Verhaltensänderung (bereits umgesetzt, bitte prüfen):**
    Fensterkontakt-Semantik war invertiert (geschlossenes Fenster wurde als „offen" angezeigt). Jetzt EnOcean-konform: `contact == 0` ⇒ offen ⇒ `is_on = True` (gedeckt durch `test_binary_sensor_D5_00_01`). **Wer das alte (falsche) Verhalten mit `invert_signal: true` kompensiert hat, muss das Flag entfernen.**
@@ -254,3 +259,7 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 | 2026-07-17 | Nutzer-Logs analysiert → echte „geht nicht"-Ursache = Gateway-ID-Parse-Crash (`int("2)")`), in v2.1.0 bereits behoben | Diagnose |
 | 2026-07-17 | Phase 5: H11, M2 (+F1), M5 + K7 (Geräte-Löschen); nach versehentlichem `git reset` aus Snapshot wiederhergestellt | 138 Tests, 3 F / 0 E |
 | 2026-07-17 | K8: LAN-TCP-Reconnect 60s→15s / Keep-Alive 60s→30s, konfigurierbar | für Release v2.1.1 |
+| 2026-07-18 | K8-Nachtrag (v2.1.2): EOF-Bug live am Gateway reproduziert (Single-Client-Verdrängung, FHEM als Zweit-Client identifiziert); Fix `tcp2serial_hardened.py` + Lib-Bump 0.2.21; am echten System verifiziert | **Release v2.1.2** |
+| 2026-07-18 | Produktentscheidung Rocker: 2 Events reaktiviert → Suite erstmals komplett grün (139) | für Release v2.1.3 |
+| 2026-07-18 | Phase 4: H8 a–d + M11 auf Branch `stability-fixes-phase4`; 6 neue VNG-Funktionstests | 145 Tests grün |
+| 2026-07-18 | Phase 4 adversarial reviewt (8 Winkel, 1-Vote-Verify): 4 CONFIRMED eingearbeitet (Generation-Token, Lifecycle-Lock, sortierte Chord-IDs, Serialize-Härtung), 4 REFUTED | **146 Tests, 0 F** |

@@ -1,5 +1,14 @@
 # Changes and Feature List
 
+## Version 2.1.3 — Taster-Events zurück, Virtual Network Gateway gehärtet
+* **Knopfspezifische Taster-Events sind zurück (F6-02-Wandtaster).** Zusätzlich zum Basis-Event (`eltako_btn_pressed_<adresse>`) wird wieder ein Event je Knopf gefeuert (z. B. `eltako_btn_pressed_<adresse>_rt`) — wie vor v2.0.0. Automationen können damit ohne Bedingung direkt auf einen Knopf triggern; Prä-v2.0.0-Automationen funktionieren wieder. Beim Loslassen wird das Event des zuvor gedrückten Knopfs gefeuert (inkl. `push_duration_in_sec`). **Hinweis:** Wer auf Basis- UND Knopf-Event hört, triggert doppelt. Zwei-Tasten-Kombinationen haben jetzt eine stabile, sortierte ID (`.._lt_rb`, nie `.._rb_lt`).
+* **Virtual Network Gateway (TCP-Server für Zweit-Instanzen) umfassend gehärtet:**
+  * Server überlebt Bind-/DNS-Fehler und lässt sich danach neu starten (vorher: Thread tot, Status „läuft", bis HA-Neustart).
+  * Hängende Clients blockieren nichts mehr: Sende-Timeout 10 s, begrenzte Warteschlangen (kein Speicherleck/OOM mehr nach Tagen), Verbindungen werden beim Stop aktiv geschlossen.
+  * Race-Fixes aus dem adversarialen Review: Ein „Zombie"-Serverthread (hängender Stop) kann einen frisch neu gestarteten Server nicht mehr abschießen (Generation-Token); gleichzeitiges Entladen + Reconnect-Button crasht nicht mehr und kann den Server nicht mehr auf einem entladenen Eintrag wiederbeleben (Lifecycle-Lock).
+  * Eine einzelne defekte Nachricht trennt nicht mehr alle verbundenen Clients.
+* Testsuite erstmals komplett grün: 146 Tests, davon 7 neue Funktionstests für den TCP-Server.
+
 ## Version 2.1.2 — LAN-Gateway: Verbindungsabbruch ohne Wiederverbindung behoben
 * **LAN-Gateway hängt nicht mehr dauerhaft nach Verbindungsabbruch (nur HA-Neustart half).** Ursache: Die Bibliothek `esp2_gateway_adapter` (bis einschl. 0.2.21) erkennt es nicht, wenn die Gegenstelle die TCP-Verbindung *sauber* schließt (FIN, z. B. wenn sich ein zweiter Client mit dem Single-Client-Gateway verbindet) — der Empfangs-Thread drehte endlos auf der toten Verbindung, ohne Reconnect und ohne Statuswechsel in HA. Die Integration bringt jetzt eine gehärtete Kommunikator-Klasse mit (`tcp2serial_hardened.py`), die den Fall erkennt und nach `reconnection_timeout` (Default 15 s) neu verbindet. Mit Regressionstest abgesichert (`tests/test_tcp_connection_hardening.py`).
 * **Kernel-TCP-Keepalive aktiviert:** Auch still abgerissene Verbindungen (NAT-Idle-Timeout, Stromausfall am Gateway) werden nun vom Betriebssystem erkannt.
