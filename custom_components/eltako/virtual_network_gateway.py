@@ -42,8 +42,15 @@ class VirtualNetworkGateway(EnOceanGateway):
                          dev_id, GatewayDeviceType.VirtualNetworkAdapter, "homeassistant.local", -2, port, AddressExpression.parse('00-00-00-00'), VIRT_GW_DEVICE_NAME, True, None,
                            config_entry  )
 
+        # _running is the CURRENT server generation's stop token. Every
+        # start_tcp_server() creates a fresh Event and hands it to the new
+        # server thread, so a zombie thread from a timed-out stop can only
+        # ever clear its OWN (stale) token and cannot tear down its successor.
         self._running = threading.Event()
         self._running.clear()
+        # serializes start/stop/restart across executor threads (unload vs. reconnect button)
+        self._lifecycle_lock = threading.Lock()
+        self._shutdown = False      # set on unload: no new server may start afterwards
         self.tcp_thread = None
         self.hass = hass
         self.zeroconf:Zeroconf = None
@@ -84,7 +91,8 @@ class VirtualNetworkGateway(EnOceanGateway):
         gateway:EnOceanGateway = data['gateway']
         msg: ESP2Message = data['esp2_msg']
 
-        LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] received message: {msg} from gateway: {gateway.dev_name}")
+        # printf-style args: formatting an ESP2Message per telegram is wasted work when debug is off
+        LOGGER.debug("[%s] received message: %s from gateway: %s", LOGGING_PREFIX_VIRT_GW, msg, gateway.dev_name)
 
         if gateway not in self.sending_gateways:
             self.sending_gateways.append(gateway)
@@ -98,7 +106,7 @@ class VirtualNetworkGateway(EnOceanGateway):
                 q.put_nowait((time.time(), msg))
             except queue.Full:
                 # client does not consume (hung/slow) => drop message instead of growing unbounded (H8c)
-                LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] Message queue of a client is full. Dropping message.")
+                LOGGER.debug("[%s] Message queue of a client is full. Dropping message.", LOGGING_PREFIX_VIRT_GW)
 
 
     def convert_bus_address_to_external_address(self, gateway, msg):
@@ -119,11 +127,15 @@ class VirtualNetworkGateway(EnOceanGateway):
 
                 ## request gateway version
                 #TODO: ...
+            except OSError:
+                # socket-level errors are fatal for the connection -> let handle_client abort
+                raise
             except Exception as e:
+                # only message-construction errors are recoverable per gateway
                 LOGGER.exception(e)
 
 
-    def handle_client(self, conn: socket.socket, addr: socket.AddressInfo):
+    def handle_client(self, conn: socket.socket, addr: socket.AddressInfo, run_flag: threading.Event):
         LOGGER.info(f"[{LOGGING_PREFIX_VIRT_GW}] Connected client by {addr}")
         # bounded queue: a client that stops consuming must not grow memory unbounded (H8c)
         self.incoming_message_queues[conn] = queue.Queue(maxsize=CLIENT_QUEUE_MAX_SIZE)
@@ -133,30 +145,36 @@ class VirtualNetworkGateway(EnOceanGateway):
             self.connected_clients.append(conn)
             self.send_gateway_info(conn)
 
-            # send messages coming in and out
-            while self._running.is_set():
+            # send messages coming in and out (run_flag = this server generation's stop token)
+            while run_flag.is_set():
                 # Receive data from the client
                 try:
-                    package = self.incoming_message_queues[conn].get(timeout=1)
-                    t = package[0]
-                    msg:ESP2Message = package[1]
-                    if time.time() - t < MAX_MESSAGE_DELAY:
-                        # LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] Forward EnOcean message {msg}")
-                        conn.sendall(msg.serialize())
-
-                        self._fire_received_message_count_event()
-                        self._fire_last_message_received_event()
-                    else:
-                        LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] EnOcean message {msg} expired (Max delay: {MAX_MESSAGE_DELAY})")
+                    t, msg = self.incoming_message_queues[conn].get(timeout=1)
                 except queue.Empty:
                     # no message within timeout => send keep alive message
                     conn.sendall(b'IM2M')
+                    continue
+
+                if time.time() - t < MAX_MESSAGE_DELAY:
+                    try:
+                        payload = msg.serialize()
+                    except Exception:
+                        # one bad message must not disconnect the client (review finding)
+                        LOGGER.warning("[%s] Dropping unserializable message %r", LOGGING_PREFIX_VIRT_GW, msg)
+                        continue
+                    conn.sendall(payload)
+
+                    self._fire_received_message_count_event()
+                    self._fire_last_message_received_event()
+                else:
+                    LOGGER.debug("[%s] EnOcean message %s expired (Max delay: %s)", LOGGING_PREFIX_VIRT_GW, msg, MAX_MESSAGE_DELAY)
 
         except socket.timeout:
             LOGGER.info(f"[{LOGGING_PREFIX_VIRT_GW}] Client {addr} did not accept data within {CLIENT_SEND_TIMEOUT}s. Closing connection.")
-        except OSError:
-            # connection reset / broken pipe / socket closed during shutdown
-            pass
+        except OSError as e:
+            # connection reset / broken pipe / socket closed during shutdown - expected,
+            # but keep the errno visible for diagnosing recurring non-shutdown errors
+            LOGGER.debug("[%s] Client %s connection error (errno=%s): %s", LOGGING_PREFIX_VIRT_GW, addr, e.errno, e)
         except Exception as e:
             LOGGER.error(f"[{LOGGING_PREFIX_VIRT_GW}] An error occurred with {addr}: {e}", exc_info=True, stack_info=True)
         finally:
@@ -168,12 +186,18 @@ class VirtualNetworkGateway(EnOceanGateway):
                 conn.close()
             except OSError:
                 pass
-            LOGGER.info(f"[{LOGGING_PREFIX_VIRT_GW}] Handler for {addr} exiting. (Thread flag running: {self._running.is_set()})")
+            LOGGER.info(f"[{LOGGING_PREFIX_VIRT_GW}] Handler for {addr} exiting. (Thread flag running: {run_flag.is_set()})")
 
 
 
-    def tcp_server(self):
-        """Basic TCP Server that listens for connections."""
+    def tcp_server(self, run_flag: threading.Event):
+        """Basic TCP Server that listens for connections.
+
+        run_flag is THIS server generation's stop token (see __init__). A thread
+        that outlives a timed-out stop_tcp_server() join must not be able to tear
+        down its successor, so all shared cleanup below is guarded by
+        `run_flag is self._running` (i.e. "I am still the current generation").
+        """
         service_info: ServiceInfo = None    # M11: defined even when registration fails
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -198,21 +222,23 @@ class VirtualNetworkGateway(EnOceanGateway):
                 # Register the service (M11: zeroconf may be None when setup did not complete)
                 try:
                     if self.zeroconf is not None and ip_address is not None:
-                        service_info = self.get_service_info(hostname, ip_address)
-                        self.zeroconf.register_service(service_info)
+                        # assign only after successful registration so the finally
+                        # block can never unregister a never-registered service (M11)
+                        info = self.get_service_info(hostname, ip_address)
+                        self.zeroconf.register_service(info)
+                        service_info = info
                         LOGGER.info(f"[{LOGGING_PREFIX_VIRT_GW}] registered mDNS service record created.")
                 except Exception as e:
                     LOGGER.error(f"[{LOGGING_PREFIX_VIRT_GW}] Could not register mDNS service: {e}")
-                    service_info = None
 
-                while self._running.is_set():
+                while run_flag.is_set():
                     try:
                         # LOGGER.debug("[%s] Try to connect", LOGGING_PREFIX)
                         conn, addr = s.accept()
                         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                        LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] Connection from: {addr} established")
+                        LOGGER.debug("[%s] Connection from: %s established", LOGGING_PREFIX_VIRT_GW, addr)
 
-                        client_thread = threading.Thread(target=self.handle_client, args=(conn, addr), daemon=True)
+                        client_thread = threading.Thread(target=self.handle_client, args=(conn, addr, run_flag), daemon=True)
                         client_thread.start()
 
                     except socket.timeout:
@@ -228,17 +254,21 @@ class VirtualNetworkGateway(EnOceanGateway):
             # server behind that still claims to be running.
             LOGGER.error(f"[{LOGGING_PREFIX_VIRT_GW}] TCP server failed: {e}", exc_info=True)
         finally:
-            # M11: unregister only when the registration succeeded
+            # M11: unregister only when the registration succeeded (always ours -> no guard)
             if service_info is not None and self.zeroconf is not None:
                 try:
                     self.zeroconf.unregister_service(service_info)
                 except Exception as e:
-                    LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] Could not unregister mDNS service: {e}")
-            # H8d: make client handler threads exit promptly
-            self._close_client_connections()
-            # H8a: reset the flag so start_tcp_server()/reconnect can start a new server
-            self._running.clear()
-            self._fire_connection_state_changed_event(False)
+                    LOGGER.debug("[%s] Could not unregister mDNS service: %s", LOGGING_PREFIX_VIRT_GW, e)
+            # end THIS generation's handler threads (their loops watch run_flag)
+            run_flag.clear()
+            # Shared cleanup only while still the current generation: a zombie thread
+            # exiting after a restart must not close the new server's clients or
+            # flip the new server's connection state (review finding, CONFIRMED).
+            if run_flag is self._running:
+                # H8d/H8a: close clients, signal disconnected, allow a fresh start
+                self._close_client_connections()
+                self._fire_connection_state_changed_event(False)
             LOGGER.info(f"[{LOGGING_PREFIX_VIRT_GW}] Closed TCP Server")
 
 
@@ -248,18 +278,24 @@ class VirtualNetworkGateway(EnOceanGateway):
 
     def restart_tcp_server(self):
         LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] Restart TCP server")
-        if self._running.is_set():
-            self.stop_tcp_server()
-        
+        # stop unconditionally (safe when not running) - the old "skip stop when
+        # _running is unset" path could resurrect a server on an unloaded entry
+        self.stop_tcp_server()
         self.start_tcp_server()
 
 
     def start_tcp_server(self):
         """Start TCP server in a separate thread."""
-        if not self._running.is_set():
+        with self._lifecycle_lock:
+            if self._shutdown:
+                LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] Gateway is unloaded - not starting TCP server.")
+                return
+            if self._running.is_set():
+                return      # current generation still running
+            # fresh stop token per generation (see __init__)
+            self._running = threading.Event()
             self._running.set()
-            self.tcp_thread = threading.Thread(target=self.tcp_server)
-            self.tcp_thread.daemon = True
+            self.tcp_thread = threading.Thread(target=self.tcp_server, args=(self._running,), daemon=True)
             self.tcp_thread.start()
 
 
@@ -278,16 +314,20 @@ class VirtualNetworkGateway(EnOceanGateway):
 
     def stop_tcp_server(self):
         """Stop TCP server thread. BLOCKING - do not call from the event loop. (K2)"""
-        self._running.clear()
-        # H8d: close client sockets so handler threads blocked in sendall() return immediately;
-        # the threads remove themselves from the client lists in their finally blocks.
-        self._close_client_connections()
-        # guard: server may never have been started (M1) and join() must never wait forever
-        if self.tcp_thread is not None and self.tcp_thread.is_alive():
-            self.tcp_thread.join(10)
-            if self.tcp_thread.is_alive():
-                LOGGER.warning(f"[{LOGGING_PREFIX_VIRT_GW}] TCP server thread did not stop within 10s.")
-        self.tcp_thread = None
+        with self._lifecycle_lock:
+            self._running.clear()
+            # H8d: close client sockets so handler threads blocked in sendall() return immediately;
+            # the threads remove themselves from the client lists in their finally blocks.
+            self._close_client_connections()
+            # snapshot: concurrent stop calls are serialized by the lock, but never
+            # dereference self.tcp_thread twice (review finding, CONFIRMED)
+            t = self.tcp_thread
+            self.tcp_thread = None
+            # guard: server may never have been started (M1) and join() must never wait forever
+            if t is not None and t.is_alive():
+                t.join(10)
+                if t.is_alive():
+                    LOGGER.warning(f"[{LOGGING_PREFIX_VIRT_GW}] TCP server thread did not stop within 10s.")
 
 
     def convert_ip_to_bytes(self, ip_address_str):
@@ -318,6 +358,8 @@ class VirtualNetworkGateway(EnOceanGateway):
 
     def _unload_blocking(self):
         """Stop TCP server thread. BLOCKING - called via executor from async_unload. (K2)"""
+        # a reconnect racing with unload must not resurrect the server afterwards
+        self._shutdown = True
         self.stop_tcp_server()
         LOGGER.debug(f"[{LOGGING_PREFIX_VIRT_GW}] Was stopped.")
 

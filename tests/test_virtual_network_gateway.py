@@ -58,9 +58,6 @@ def connect_when_listening(port: int, timeout: float = 5.0) -> socket.socket:
 
 class TestVirtualNetworkGateway(unittest.TestCase):
 
-    def _stop(self, vng: VNGMock):
-        vng.stop_tcp_server()
-
     def test_client_receives_keep_alive_and_forwarded_message(self):
         vng = VNGMock(get_free_port())
         vng.start_tcp_server()
@@ -83,7 +80,7 @@ class TestVirtualNetworkGateway(unittest.TestCase):
             self.assertIn(msg.serialize(), buffer)
             client.close()
         finally:
-            self._stop(vng)
+            vng.stop_tcp_server()
 
     def test_forward_message_survives_disconnecting_client(self):
         """H8b: a client without a queue (mid-disconnect) must not crash the loop."""
@@ -121,7 +118,7 @@ class TestVirtualNetworkGateway(unittest.TestCase):
         # server closed the connection => recv unblocks with EOF (or reset)
         try:
             data = client.recv(1024)
-            while data not in (b'',):   # drain remaining keep-alives until EOF
+            while data:     # drain remaining keep-alives until EOF (b'' is falsy)
                 data = client.recv(1024)
         except OSError:
             pass
@@ -148,7 +145,34 @@ class TestVirtualNetworkGateway(unittest.TestCase):
             client = connect_when_listening(port)
             client.close()
         finally:
-            self._stop(vng)
+            vng.stop_tcp_server()
+
+    def test_fresh_stop_token_per_generation_and_shutdown_guard(self):
+        """Review fix: each server generation gets its own stop token, so a zombie
+        thread from a timed-out stop cannot tear down its successor; after unload
+        no new server may start (reconnect-vs-unload race)."""
+        port = get_free_port()
+        vng = VNGMock(port)
+        vng.start_tcp_server()
+        first_token = vng._running
+        vng.stop_tcp_server()
+        vng.start_tcp_server()
+        second_token = vng._running
+        try:
+            self.assertIsNot(first_token, second_token, "stop token must be per generation")
+            # a zombie clearing its STALE token must not stop the current server
+            first_token.clear()
+            self.assertTrue(second_token.is_set())
+            client = connect_when_listening(port)
+            client.close()
+        finally:
+            vng.stop_tcp_server()
+
+        # unload: subsequent start attempts (e.g. late reconnect) must be refused
+        vng._unload_blocking()
+        vng.start_tcp_server()
+        self.assertIsNone(vng.tcp_thread, "server must not start after unload")
+        self.assertFalse(vng._running.is_set())
 
     def test_failed_bind_resets_running_flag(self):
         """H8a: a bind error (port in use) must clear _running so a restart stays possible."""
@@ -173,7 +197,7 @@ class TestVirtualNetworkGateway(unittest.TestCase):
             client = connect_when_listening(port)
             client.close()
         finally:
-            self._stop(vng)
+            vng.stop_tcp_server()
 
 
 if __name__ == "__main__":
