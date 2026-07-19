@@ -274,7 +274,7 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 - ☐ **AV2** — F6-02-Schalter: nur obere Rocker-Hälfte (Aktionen 1/3) wird verarbeitet und togglet; untere Hälfte (0/2 = AUS, genau was `turn_off` sendet) wird ignoriert → invertierter HA-State bis zum nächsten Top-Press. Fix: 0/2 = explizit AUS, 1/3 = explizit AN.
 
 ### Config-Flow / VNG-Protokoll
-- ☐ **AF1** — Kein `async_set_unique_id`/`_abort_if_unique_id_configured` → bei fehlgeschlagenem Setup kann derselbe Gateway doppelt angelegt werden (zweiter Entry überschreibt `gateway_<id>`, Unload zerlegt den jeweils anderen).
+- ☑ **AF1** — Kein `async_set_unique_id`/`_abort_if_unique_id_configured` → bei fehlgeschlagenem Setup kann derselbe Gateway doppelt angelegt werden (zweiter Entry überschreibt `gateway_<id>`, Unload zerlegt den jeweils anderen). **ERLEDIGT v2.4.0** (unique_id `eltako_gateway_<id>` + Abort im Flow) **+ v2.6.0** (Backfill für Alt-Einträge via `async_migrate_entry`). *(Checkbox war hier veraltet — korrigiert im R3-Audit.)*
 - ☐ **AN1** — VNG `send_gateway_info`: Gateway-Typ-Code = Enum-Listenposition+1 (Aliase kollabieren!, kein Empfänger dekodiert ihn, `get_by_index` ohne −1); Client übernimmt bei N Gateways nur die LETZTE Base-Id für alle Adressübersetzungen.
 - ☐ **AN2** — Gesendete (nicht empfangene) Telegramme werden ohne Adressübersetzung ans VNG weitergereicht (`convert_bus_address_to_external_address` = toter TODO-Stub) → Mehrbus-Ambiguität bei Zweit-HA.
 - ☐ **AN3** — `CONF_ID_REGEX` erlaubt ` left/right`-Suffix auch bei base_id/sender_id, wo er bedeutungslos ist → fehlerhafte Configs passieren die Validierung.
