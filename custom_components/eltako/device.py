@@ -7,7 +7,6 @@ from eltakobus.eep import EEP
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.entity_platform import DATA_ENTITY_PLATFORM
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, dispatcher_send
 from homeassistant.helpers.entity import Entity
@@ -25,7 +24,8 @@ class EltakoEntity(Entity):
     def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str="Device", dev_eep: EEP=None, description_key:str=None):
         """Initialize the device."""
         self._attr_has_entity_name = True
-        self._attr_should_poll = True
+        # N2: Eltako entities are push (local_push); polling adds needless cyclic load
+        self._attr_should_poll = False
 
         self._attr_ha_platform = platform
         self._attr_gateway = gateway
@@ -146,11 +146,8 @@ class EltakoEntity(Entity):
         """Return the supporting gateway of device."""
         return self._attr_gateway
 
-    @property
-    def dev_id(self) -> AddressExpression:
-        """Return the id of device."""
-        return self._attr_dev_id
-    
+    # N10: duplicate dev_id property removed (identical definition exists above)
+
     @property
     def unique_id(self) -> str:
         """Return the unique id of device"""
@@ -202,12 +199,5 @@ def log_entities_to_be_added(entities:list[EltakoEntity], platform:Platform) -> 
              temp_eep = f"eep: {e.dev_eep.eep_string}),"
         LOGGER.debug(f"[{platform} {e.dev_id}] Add entity {e.dev_name} (id: {e.dev_id},{temp_eep} gw: {e.gateway.dev_name}, listens to: {', '.join([b2s(a) for a in e.listen_to_addresses])}) to Home Assistant.")
 
-def get_entity_from_hass(hass: HomeAssistant, domain:Platform, dev_id: AddressExpression) -> bool:
-    entity_platforms = hass.data[DATA_ENTITY_PLATFORM][DOMAIN]
-    for platform in entity_platforms:
-        if platform.domain == domain:
-            for entity in platform.entities.values():
-                LOGGER.debug(f"checking entity type: {type(entity)}, dev_eep: {entity.dev_eep.eep_string}, dev_id: {entity.dev_id}")
-                if entity.dev_id == dev_id:
-                    return entity
-    return None
+# N10: get_entity_from_hass removed - unused and relied on the internal
+# hass.data[DATA_ENTITY_PLATFORM] structure (also crashed on dev_eep=None).

@@ -1,14 +1,12 @@
 """Support for Eltako devices."""
-import os
-
+# N10: removed dead imports (os, async_register_built_in_panel, panel_custom,
+# websocket_api) that only served the commented-out frontend-panel code below.
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.dispatcher import dispatcher_connect
 from homeassistant.helpers.reload import async_reload_integration_platforms
-from homeassistant.components.frontend import async_register_built_in_panel
-from homeassistant.components import panel_custom, websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er, device_registry as dr, entity_platform as pl
 
@@ -18,7 +16,8 @@ from .virtual_network_gateway import VirtualNetworkGateway, VIRT_GW_PORT
 from .schema import CONFIG_SCHEMA
 from . import config_helpers
 from .gateway import *
-from .frontend.info_page_view import InfoPageView
+# N10: dead 'from .frontend.info_page_view import InfoPageView' removed - the view
+# was never registered (its panel/static registration is gone).
 
 LOG_PREFIX_INIT = "Eltako Integration Setup"
 
@@ -121,7 +120,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
     # Check domain
     if config_entry.domain != DOMAIN:
-        LOGGER.warning(f"[{LOG_PREFIX_INIT}] Ooops, received configuration entry of wrong domain '%s' (expected: '%s')!", config_entry.domain, DOMAIN)
+        LOGGER.warning(f"[{LOG_PREFIX_INIT}] Ooops, received configuration entry of wrong domain '{config_entry.domain}' (expected: '{DOMAIN}')!")
         return False
 
 
@@ -210,49 +209,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         await async_unload_gateway(hass, config_entry)
         raise
 
-    # hass.http.register_static_path(
-    #     "/eltako",
-    #     # hass.config.path("custom_components/eltako/frontend/index.html"),
-    #     os.path.join(os.path.dirname(__file__), "/frontend"),
-    #     cache_headers=False,
-    # )
-
-
-    # async_register_built_in_panel(
-    #     hass,
-    #     "iframe",  # Panel type
-    #     "Eltako",  # Panel title
-    #     "mdi:web",  # Panel icon
-    #     frontend_url_path="eltako",  # URL path for the panel
-    #     config={
-    #         "url": "/eltako/index.html"  # Path to the panel HTML
-    #     },
-    #     require_admin=False,
-    # )
-
-    # hass.http.register_view(InfoPageView())
-
-    # # Register the sidebar panel
-    # hass.components.frontend.async_register_built_in_panel(
-    #     component_name="iframe",  # Use iframe to embed the view
-    #     sidebar_title="Eltako",  # Title in the sidebar
-    #     sidebar_icon="mdi:view-dashboard",  # Icon for the sidebar
-    #     frontend_url_path="eltako",  # URL in the sidebar
-    #     config={
-    #         "url": "/eltako?auth_callback=1"  # URL served by the view
-    #     },
-    # )
-
-    # await panel_custom.async_register_panel(
-    #         hass=hass,
-    #         frontend_url_path=DOMAIN,
-    #         webcomponent_name="eltako",
-    #         sidebar_title=DOMAIN,
-    #         sidebar_icon="mdi:bus-electric",
-    #         module_url=f"/frontend/index.html",
-    #         embed_iframe=True,
-    #         require_admin=False,
-    #     )
+    # N10: removed large commented-out frontend-panel block (register_static_path
+    # was removed in HA 2025.7; the panel was never actually registered).
 
     return True
 
