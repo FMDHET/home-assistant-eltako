@@ -149,10 +149,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] Device information for gateway is not available. Try to delete and recreate the gateway.")
     gateway_description = config_entry.data[CONF_GATEWAY_DESCRIPTION]    # from user input
 
-    if not ('(' in gateway_description and ')' in gateway_description):
-        raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] No id of gateway available (description: '{gateway_description}'). Try to delete and recreate the gateway.")
-
     gateway_id = config_helpers.get_id_from_gateway_name(gateway_description)
+    if gateway_id is None:
+        raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] No id of gateway available (description: '{gateway_description}'). Try to delete and recreate the gateway.")
 
     # get home assistant configuration section matching base_id
     gateway_config = await config_helpers.async_find_gateway_config_by_id(gateway_id, hass, CONFIG_SCHEMA)

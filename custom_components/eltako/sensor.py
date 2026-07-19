@@ -79,7 +79,10 @@ SENSOR_TYPE_WEATHER_STATION_ILLUMINANCE_EAST = "weather_station_illuminance_east
 SENSOR_TYPE_ILLUMINANCE = "illuminance"
 
 
-@dataclass
+# M7: HA requires EntityDescription subclasses to be frozen (kw_only matches the
+# base class); the non-frozen form only worked via a transitional HA metaclass
+# and would raise TypeError at module import with future HA versions.
+@dataclass(frozen=True, kw_only=True)
 class EltakoSensorEntityDescription(SensorEntityDescription):
     """Describes Eltako sensor entity."""
 
@@ -389,8 +392,8 @@ async def async_setup_entry(
                 dev_conf = DeviceConf(entity_config)
                 if dev_conf.eep in [F6_01_01, F6_02_01, F6_02_02]:
                     def convert_event(event):
-                        # if hasattr(event, 'data') and isinstance(event.data, dict) and 'pressed_buttons' in event.data:
-                        return config_helpers.button_abbreviation_to_str(event.data['pressed_buttons'])
+                        # M8: foreign/manually fired events with this event id may lack the key -> no KeyError
+                        return config_helpers.button_abbreviation_to_str(event.data.get('pressed_buttons', []))
 
                     event_id = config_helpers.get_bus_event_type(gateway.dev_id, EVENT_BUTTON_PRESSED, dev_conf.id)
                     if dev_conf.eep in [F6_02_01, F6_02_02]:

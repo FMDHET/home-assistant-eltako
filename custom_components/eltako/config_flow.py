@@ -97,6 +97,8 @@ class EltakoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             #only for available gw
             if g_list_dict[g_id] in g_list:
                 g_c = config_helpers.find_gateway_config_by_id(config, g_id)
+                if g_c is None:     # M10: no matching gateway config -> avoid TypeError on `in None`
+                    continue
                 if CONF_SERIAL_PATH in g_c:
                     serial_paths.append(g_c[CONF_SERIAL_PATH])
                 if CONF_GATEWAY_ADDRESS in g_c:
@@ -136,39 +138,45 @@ class EltakoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     async def validate_eltako_conf(self, user_input) -> bool:
         """Return True if the user_input contains a valid gateway path."""
         serial_path: str = user_input[CONF_SERIAL_PATH]
-        baud_rate: int = -1
         gateway_selection: str = user_input[CONF_GATEWAY_DESCRIPTION]
 
         LOGGER.debug("[%s] Start serial path validation for '%s' and address '%s'", LOGGER_PREFIX_CONFIG_FLOW, gateway_selection, serial_path)
 
-        for gdc in gateway.GatewayDeviceType:
-            if gdc in gateway_selection:
-                baud_rate = gateway.BAUD_RATE_DEVICE_TYPE_MAPPING[gdc]
+        # M10: determine the device type from the YAML config by gateway id instead of
+        # substring-matching the description (which mis-matched e.g. a type value 'lan'
+        # inside a gateway named "Planung", and could confuse overlapping type names).
+        gateway_device_type = None
+        gateway_id = config_helpers.get_id_from_gateway_name(gateway_selection)
+        if gateway_id is not None:
+            config = await config_helpers.async_get_home_assistant_config(self.hass, CONFIG_SCHEMA)
+            g_c = config_helpers.find_gateway_config_by_id(config, gateway_id)
+            if g_c is not None:
+                gateway_device_type = GatewayDeviceType.find(g_c[CONF_DEVICE_TYPE])
 
-        is_network_gw = False
-        for gdc in GatewayDeviceType:
-            if GatewayDeviceType.is_lan_gateway(gdc) and gdc in gateway_selection:
-                is_network_gw = True
-                break
-        
-        # check ip address for esp2/3 over tcp
-        if GatewayDeviceType.VirtualNetworkAdapter.value in gateway_selection:
+        if gateway_device_type is None:
+            LOGGER.warning("[%s] Could not determine device type for gateway '%s'.", LOGGER_PREFIX_CONFIG_FLOW, gateway_selection)
+            return False
+
+        # virtual network gateway has no physical path to validate
+        if gateway_device_type == GatewayDeviceType.VirtualNetworkAdapter:
             return True
-        elif is_network_gw:
-            try:
-                ip = ipaddress.ip_address(serial_path)
-                LOGGER.debug("[%s] Found valid IP Address %s.", serial_path)
-                return True
-            except Exception:
-                LOGGER.debug("[%s] serial_path: %s is no valid IP Address", serial_path)
-                return False
-        # check serial ports / usb
-        else:
-            path_is_valid = await self.hass.async_add_executor_job(
-                gateway.validate_path, serial_path, baud_rate
-            )
-            LOGGER.debug("[%s] serial_path: %s, validated with baud rate %d is %s", LOGGER_PREFIX_CONFIG_FLOW, serial_path, baud_rate, path_is_valid)
 
+        # check ip address for esp2/3 over tcp
+        if GatewayDeviceType.is_lan_gateway(gateway_device_type):
+            try:
+                ipaddress.ip_address(serial_path)
+                LOGGER.debug("[%s] Found valid IP Address %s.", LOGGER_PREFIX_CONFIG_FLOW, serial_path)
+                return True
+            except ValueError:
+                LOGGER.debug("[%s] serial_path: %s is no valid IP Address", LOGGER_PREFIX_CONFIG_FLOW, serial_path)
+                return False
+
+        # check serial ports / usb
+        baud_rate = gateway.BAUD_RATE_DEVICE_TYPE_MAPPING[gateway_device_type]
+        path_is_valid = await self.hass.async_add_executor_job(
+            gateway.validate_path, serial_path, baud_rate
+        )
+        LOGGER.debug("[%s] serial_path: %s, validated with baud rate %d is %s", LOGGER_PREFIX_CONFIG_FLOW, serial_path, baud_rate, path_is_valid)
         return path_is_valid
 
     def create_eltako_entry(self, user_input):
