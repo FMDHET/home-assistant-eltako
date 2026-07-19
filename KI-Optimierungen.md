@@ -221,11 +221,17 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 - Hygiene/Zukunftssicherheit: N2 (should_poll), N5 (öffentliche Validatoren), N6 (Logging), N4 (Manifest/hassfest), N10 (toter Code + frontend/).
 - Adversarial reviewt (2 Winkel): **0 Regressionen**; Review fand zusätzlich einen hängenden `InfoPageView`-Import (behoben) und bestätigte den A5-30-03-Bonus-Fix. 4 neue Regressionstests (Phase 6+7). **154 Tests grün.**
 
-### ☐ Phase 8 — Abschluss-Verifikation
-1. Kompletter Testlauf + ggf. neue Regressionstests für K1–K6
-2. `hassfest`-Validierung (CI vorhanden: `.github/workflows/hassfest.yml`)
-3. Manueller Test im echten HA: Start → Reload → Reconnect-Button → Taster drücken/loslassen → HA-Neustart (Restore) → Langzeitbeobachtung Log
-4. `changes.md` + Versionsnummer in `manifest.json` pflegen
+### ◑ Phase 8 — Abschluss-Verifikation (weitgehend erledigt 2026-07-19)
+1. ☑ Kompletter Testlauf: **154 Tests grün, 0 Fehler** (Baseline-Failures aus Phase 0 alle behoben). Neue Regressionstests in Phase 4/6/7 ergänzt.
+2. ☑ `hassfest`-Validierung **grün** (CI-Lauf auf v2.1.6 bestätigt). War vorbestehend rot wegen fehlender `zeroconf`-Dependency → in v2.1.6 deklariert.
+3. ☑ Config-Ladepfad verifiziert: reale `ha.yaml` validiert end-to-end gegen `CONFIG_SCHEMA` (2 Gateways, 22 Geräte). Dabei Tippfehler im VNG-`device_type` der Beispiel-Config behoben und den zugehörigen Test repariert (rief CONFIG_SCHEMA auf falscher Ebene auf → validierte Gateways nie).
+4. ☑ `changes.md` + `manifest.json`-Version durchgängig gepflegt (v2.1.0 … v2.1.6).
+5. ☐ **Offen — nur vom Nutzer durchführbar:**
+   - Manueller HA-Durchlauf am echten System: Start → Reload → Reconnect-Button → Taster drücken/loslassen → HA-Neustart (Restore) → Langzeit-Log.
+   - **HACS-Action** (CI) rot wegen **Repo-Einstellungen** (kein Code): GitHub-Repo braucht (a) *Topics* und (b) aktivierte *Issues*. Über GitHub-Weboberfläche/-Settings setzen (braucht Repo-Admin-Rechte, nicht per Code lösbar).
+
+### ☐ Restlicher offener Befund
+- **M14** — Climate: toter Periodik-Task (auskommentiert). Reaktivierung nur mit echter Heiz-/Kühl-Hardware sinnvoll testbar.
 
 ---
 
@@ -273,3 +279,5 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 | 2026-07-19 | Phase 6 adversarial reviewt (3 Winkel): Kernänderungen bestätigt, `ftd14`-KeyError gehärtet (config_flow + init) | **152 Tests, 0 F**, Release v2.1.4 |
 | 2026-07-19 | Phase 7: N2–N6, N8–N10 auf Branch `stability-fixes-phase7`; totes frontend/ + Panel-Reste entfernt; 2 neue Regressionstests | 154 Tests grün |
 | 2026-07-19 | Phase 7 adversarial reviewt (2 Winkel): 0 Regressionen; hängender InfoPageView-Import gefangen & behoben; reale ha.yaml gegen neues Schema verifiziert | **154 Tests, 0 F**, Release v2.1.5 |
+| 2026-07-19 | hassfest via CI rot entdeckt (fehlende `zeroconf`-Dependency, vorbestehend) → deklariert | **Release v2.1.6, hassfest grün** |
+| 2026-07-19 | Phase 8: Testlauf/hassfest/Config-Validierung ✅; ha.yaml-`device_type`-Tippfehler + Beispiel-Test-Bug behoben | offen nur: manueller HA-Test, HACS-Repo-Settings (Nutzer), M14 (Hardware) |
