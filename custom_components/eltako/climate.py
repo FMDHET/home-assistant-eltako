@@ -102,12 +102,9 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-def validate_ids_of_climate(entities:list[EltakoEntity]):
-    for e in entities:
-        e.validate_dev_id()
-        e.validate_sender_id()
-        if hasattr(e, "cooling_sender_id"):
-            e.validate_sender_id(e.cooling_sender_id)
+# N10: validate_ids_of_climate removed - dead code (never called;
+# async_setup_entry uses validate_actuators_dev_and_sender_id instead).
+
 class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
     """Representation of an Eltako heating and cooling actor."""
 

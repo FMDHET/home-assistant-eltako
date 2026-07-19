@@ -118,11 +118,15 @@ class EltakoBinarySensor(AbstractBinarySensor):
     - D5-00-01
     """
 
-    LAST_RECEIVED_TELEGRAMS:Dict[str,Dict] = {}
+    # N8: per-instance, not a shared class dict. As a class attribute it was shared
+    # across ALL binary sensors of ALL gateways (same switch address on two gateways
+    # overwrote each other's push/release correlation) and was never cleared (leak).
+    LAST_RECEIVED_TELEGRAMS: Dict[str, Dict]
 
-    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name:str, dev_eep: EEP, 
+    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name:str, dev_eep: EEP,
                  device_class: str, invert_signal: bool, description: EntityDescription=None):
         """Initialize the Eltako binary sensor."""
+        self.LAST_RECEIVED_TELEGRAMS = {}
         if description:
             self.entity_description = EntityDescription(
                 key=description.key,

@@ -55,7 +55,8 @@ def _get_sender_schema(supported_sender_eep) -> vol.Schema:
 
 def _get_receiver_schema(supported_sender_eep) -> vol.Schema:
     return _get_sender_schema(supported_sender_eep).extend({
-        vol.Optional(CONF_GATEWAY_ID, default=None): cv.Number,
+        # N5: cv.Number is not public and lets floats through; a gateway id is a positive int
+        vol.Optional(CONF_GATEWAY_ID, default=None): vol.Any(None, cv.positive_int),
     })
 
 class EltakoPlatformSchema(ABC):
@@ -249,8 +250,8 @@ class ClimateSchema(EltakoPlatformSchema):
                 vol.Required(CONF_EEP): vol.In(CONF_CLIMATE_EEP),
                 vol.Required(CONF_SENDER): _get_sender_schema(CONF_CLIMATE_SENDER_EEP),             # temperature controller command
                 vol.Required(CONF_TEMPERATURE_UNIT): vol.In([u.value for u in UnitOfTemperature]),  # for display: "°C", "°F", "K"
-                vol.Optional(CONF_MIN_TARGET_TEMPERATURE, default=17): cv.Number,
-                vol.Optional(CONF_MAX_TARGET_TEMPERATURE, default=25): cv.Number,
+                vol.Optional(CONF_MIN_TARGET_TEMPERATURE, default=17): vol.Coerce(float),
+                vol.Optional(CONF_MAX_TARGET_TEMPERATURE, default=25): vol.Coerce(float),
                 vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,  
                 vol.Optional(CONF_ROOM_THERMOSTAT): _get_sender_schema(CONF_CLIMATE_SENDER_EEP),    # physical thermostat like FUTH
                 vol.Optional(CONF_COOLING_MODE): CONF_COOLING_MODE_SCHEMA                           # if not provided cooling is not supported
@@ -263,17 +264,18 @@ class GatewaySchema(EltakoPlatformSchema):
     PLATFORM = CONF_GATEWAY
 
     ENTITY_SCHEMA = vol.Schema({
-            vol.Required(CONF_ID): cv.Number,
+            # N5: replace non-public cv.Number with public validators matching each field's type
+            vol.Required(CONF_ID): cv.positive_int,     # integer gateway id (float ids broke id parsing, M9)
             vol.Required(CONF_DEVICE_TYPE, default=GatewayDeviceType.GatewayEltakoFGW14USB.value): vol.In([g.value for g in GatewayDeviceType]),
             vol.Optional(CONF_BASE_ID, default='00-00-00-00'): cv.matches_regex(CONF_ID_REGEX),
             vol.Optional(CONF_NAME, default=""): cv.string,
             vol.Optional(CONF_SERIAL_PATH): cv.string,
             vol.Optional(CONF_GATEWAY_AUTO_RECONNECT, default=True): cv.boolean,
             vol.Optional(CONF_GATEWAY_ADDRESS): cv.string,
-            vol.Optional(CONF_GATEWAY_MESSAGE_DELAY, default=0.01): cv.Number,
-            vol.Optional(CONF_GATEWAY_PORT, default=5100): cv.Number,
-            vol.Optional(CONF_GATEWAY_RECONNECTION_TIMEOUT, default=15): cv.Number,       # LAN gateways only
-            vol.Optional(CONF_GATEWAY_TCP_KEEP_ALIVE_TIMEOUT, default=30): cv.Number,     # LAN gateways only
+            vol.Optional(CONF_GATEWAY_MESSAGE_DELAY, default=0.01): cv.positive_float,
+            vol.Optional(CONF_GATEWAY_PORT, default=5100): cv.port,
+            vol.Optional(CONF_GATEWAY_RECONNECTION_TIMEOUT, default=15): cv.positive_float,       # LAN gateways only
+            vol.Optional(CONF_GATEWAY_TCP_KEEP_ALIVE_TIMEOUT, default=30): cv.positive_float,     # LAN gateways only
             vol.Optional(CONF_DEVICES): vol.All(vol.Schema({
                 **BinarySensorSchema.platform_node(),
                 **LightSchema.platform_node(),

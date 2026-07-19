@@ -91,7 +91,8 @@ SENSOR_DESC_BATTERY_VOLTAGE = EltakoSensorEntityDescription(
     name="Battery Voltage",
     native_unit_of_measurement=UnitOfElectricPotential.VOLT,
     icon="mdi:lightning-bolt",
-    device_class=SensorDeviceClass.BATTERY,
+    # N3: BATTERY device class requires unit '%'; this measures voltage in volts -> VOLTAGE
+    device_class=SensorDeviceClass.VOLTAGE,
     state_class=SensorStateClass.MEASUREMENT,
 )
 
@@ -151,7 +152,9 @@ SENSOR_DESC_WINDOWHANDLE = EltakoSensorEntityDescription(
     key=SENSOR_TYPE_WINDOWHANDLE,
     name="Window handle",
     icon="mdi:window-open-variant",
-    device_class='window',
+    # N3: 'window' is a BinarySensorDeviceClass, not valid for a sensor entity.
+    # The handle reports a textual position (open/closed/tilted) -> no device_class.
+    device_class=None,
     native_unit_of_measurement=None,
     suggested_display_precision=None,
     suggested_unit_of_measurement=None,
@@ -191,9 +194,10 @@ SENSOR_DESC_WEATHER_STATION_WIND_SPEED = EltakoSensorEntityDescription(
 SENSOR_DESC_WEATHER_STATION_RAIN = EltakoSensorEntityDescription(
     key=SENSOR_TYPE_WEATHER_STATION_RAIN,
     name="Rain",
-    native_unit_of_measurement="",
+    # N3: "rain" is not a valid SensorDeviceClass and "" is not a valid unit.
+    native_unit_of_measurement=None,
     icon="mdi:weather-pouring",
-    device_class="rain",
+    device_class=None,
     state_class=SensorStateClass.MEASUREMENT,
 )
 
@@ -306,7 +310,9 @@ async def async_setup_entry(
                 dev_name = dev_conf.name
             
                 if dev_conf.eep in [A5_13_01]:
-                    if dev_name == dev_conf.name:
+                    # N9: only fall back to the default when no name was configured.
+                    # Was `dev_name == dev_conf.name` (always True) -> user names ignored.
+                    if dev_name == "":
                         dev_name = DEFAULT_DEVICE_NAME_WEATHER_STATION
                     
                     entities.append(EltakoWeatherStation(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_DAWN))
@@ -361,9 +367,13 @@ async def async_setup_entry(
                 
                 elif dev_conf.eep in [A5_09_0C]:
                 ### Eltako FLGTF only supports VOCT Total
+                    # N9: .get() with the schema defaults so a config not run through the
+                    # schema (or a future schema change) does not KeyError here.
+                    voc_type_indexes = entity_config.get(CONF_VOC_TYPE_INDEXES, [0])
+                    language = entity_config.get(CONF_LANGUAGE, "en")
                     for t in VOC_SubstancesType:
-                        if t.index in entity_config[CONF_VOC_TYPE_INDEXES]:
-                            entities.append(EltakoAirQualitySensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, t, entity_config[CONF_LANGUAGE]))
+                        if t.index in voc_type_indexes:
+                            entities.append(EltakoAirQualitySensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, t, language))
 
                 elif dev_conf.eep in [A5_07_01]:
                     entities.append(EltakoPirSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep))
@@ -584,7 +594,7 @@ class EltakoMeterSensor(EltakoSensor):
             self.entity_description.key == SENSOR_TYPE_WATER_CUMULATIVE):
             self._attr_native_value = round(calculatedValue, 2)
             self.schedule_update_ha_state()
-        elif (not cumulative) and msg.data[3] != 0x8F and self.entity_description.key == SENSOR_TYPE_ELECTRICITY_CURRENT: # 0x8F means that, it's sending the serial number of the meter
+        elif (not cumulative) and len(msg.data) > 3 and msg.data[3] != 0x8F and self.entity_description.key == SENSOR_TYPE_ELECTRICITY_CURRENT: # N9: guard index; 0x8F means it's sending the serial number of the meter
             self._attr_native_value = round(calculatedValue, 2)
             self.schedule_update_ha_state()
         elif (not cumulative) and self._tariff == tariff and (
