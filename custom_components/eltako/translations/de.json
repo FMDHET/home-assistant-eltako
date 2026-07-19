@@ -20,8 +20,7 @@
     },
     "error": {
       "invalid_gateway_path": "Für diesen Pfad wurde kein gültiges Gateway gefunden.",
-      "no_serial_path_available": "Kein serieller Pfad verfügbar. USB-Stecker neu verbinden.",
-      "no_gateway_configuration_available": "Keine Gateway-Konfiguration vorhanden. Gateway im Abschnitt 'eltako:' der configuration.yaml eintragen."
+      "no_serial_path_available": "Kein serieller Pfad verfügbar. USB-Stecker neu verbinden."
     },
     "abort": {
       "no_configuration_available": "Kein Gateway zum Hinzufügen verfügbar. Alle konfigurierten Gateways sind bereits eingerichtet."

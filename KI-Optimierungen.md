@@ -231,7 +231,52 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
    - **HACS-Action** (CI) rot wegen **Repo-Einstellungen** (kein Code): GitHub-Repo braucht (a) *Topics* und (b) aktivierte *Issues*. Über GitHub-Weboberfläche/-Settings setzen (braucht Repo-Admin-Rechte, nicht per Code lösbar).
 
 ### ☐ Restlicher offener Befund
-- **M14** — Climate: toter Periodik-Task (auskommentiert). Reaktivierung nur mit echter Heiz-/Kühl-Hardware sinnvoll testbar.
+- **M14** — Climate: toter Periodik-Task (auskommentiert). Reaktivierung nur mit echter Heiz-/Kühl-Hardware sinnvoll testbar. *(Siehe auch AC4 unten — dasselbe Thema, im Audit Runde 2 präzisiert.)*
+
+---
+
+## 6. Audit Runde 2 (2026-07-19) — Backlog der zurückgestellten Befunde
+
+> Gesamt-Codebase-Audit (6 parallele Auditoren, 48 Kandidaten). Die ~20 sicheren, unit-testbaren Fixes wurden in **v2.2.0** umgesetzt. Die folgenden Befunde sind **Verhaltensänderungen** und warten auf das Hardware-/HA-Test-Setup. Priorität: ⚡ = hoher Nutzer-Impact.
+
+### Climate (Cooling-Pfad, nie hardware-getestet — zusammen mit M14 angehen)
+- ☐ **AC1 ⚡** — `change_temperature_values` erzwingt HEAT/HEATING bei jedem Telegramm; `HVACAction.COOLING` wird nirgends gesetzt → Cooling-Status flippt bei jedem Aktor-Telegramm zurück. Fix: auf `_get_mode()` verzweigen.
+- ☐ **AC2** — THERMOSTAT-Priorität sendet faktisch „Solltemperatur 40 °C" (`int(40/40*255)=0xFF` in DB2). Intent lt. Kommentar `00-00-00-08`; eep.py dokumentiert Thermostat-Prio zudem als 0x0E. Mit Hardware klären, dann `target_temp=0` bzw. korrekten Prio-Code senden.
+- ☐ **AC3** — HEAT↔COOL-Übergang ruft `async_set_hvac_mode` → sendet Normal-Mode (0x70) auch wenn Gerät OFF/Preset → schaltet ausgeschaltete Heizung ungefragt ein.
+- ☐ **AC4** (= M14) — Auskommentierter Periodik-Task: (a) Cooling-Keep-alive via `cooling.sender` wird nie gesendet, (b) Cooling-Expiry wird nur bei eingehenden Events geprüft (FTS14EM aus → Status hängt ewig auf COOL), (c) Aktor-Watchdog-Refresh fehlt.
+- ☐ **AC5** — Cooling-Expiry: Wanduhr (`time.time()`) statt `monotonic()` und Vergleich exakt = Repeat-Periode (15 min, null Toleranz) → Flattern bei verlorenem Telegramm/NTP-Sprung. Fix: monotonic + Marge (~1,5×).
+- ☐ **AC6** — Eingehende A5-10-06-Telegramme überschreiben Zieltemperatur/Modus ohne Prioritätsprüfung (Thermostat-Stale-Wert schlägt HA-Sollwert); `HeaterMode.UNKNOWN` wird gespeichert und später als Kommando-Byte 0x00 re-gesendet.
+- ☐ **AC7** — `async_set_hvac_mode`: OFF schreibt keinen State (UI zeigt alt), HEAT-Anforderung im COOL-Modus wird still ignoriert, OFF wirkt als Toggle (schaltet Aus wieder ein — nur `turn_off` wurde in M2/F1 gefixt).
+- ☐ **AC8** — Thermostat-Telegramme werden mit dem Aktor-EEP dekodiert (`self.dev_eep` statt `self.thermostat.eep`) → z. B. A5-10-12-Thermostat liefert Unsinn ohne Warnung.
+
+### Multi-Gateway (⚡ betrifft Setups mit >1 Gateway — beim Nutzer vorhanden!)
+- ☐ **AM1 ⚡⚡** — `get_identifier` lässt die Gateway-Id weg, wenn `dev_id=None` → ALLE Gateways teilen sich das Dispatcher-Signal `eltako_send_message` (jedes Kommando geht auf **alle** Busse, N-fache Echos) und der Send-Service `eltako_send_message_service` wird vom letzten Gateway überschrieben. Fix (Breaking: Service-/Event-Umbenennung!): gw-Präfix auch bei `dev_id=None`.
+- ☐ **AM2 ⚡** — 1BS-Telegramme (`EltakoWrapped1BS`, D5-00-01/FTS14EM) fehlen in der Adress-Rewrite-Liste des Gateways, `_message_received_callback` addiert dann die EIGENE base_id auf fremde lokale Adressen → bei 2 Bus-Gateways aktualisiert Gateway-B-Telegramm die Entity von Gateway A. Fix: Rewrite-Liste ergänzen + `data['gateway']`-Vergleich (TODO device.py:174).
+- ☐ **AM3** — unique_id verliert den `left`/`right`-Diskriminator (`b2s` nutzt nur `addr[0]`) → zwei Rocker-Hälften desselben Tasters kollidieren, eine Entity fehlt still.
+
+### Gateway / Init
+- ☐ **AG1 ⚡** — ESP2-Gateways außer FAM14 (FGW14-USB, FAM-USB, LAN_ESP2) fragen nie eine Base-Id ab; Schema-Default `00-00-00-00` + Gate `int(base_id)!=0` verwirft dann ALLE empfangenen Telegramme kommentarlos (Zähler zählt weiter!). Fix: Warnung + Base-Id-Pflicht für diese Typen oder Query erweitern.
+- ☐ **AG2** — Rewrite-Liste enthält Catch-all `EltakoMessage` → Payload von 0x8b-Bus-Management-Telegrammen wird verfälscht ans globale Event-Bus/VNG weitergereicht; `AddressExpression.add()` kann OverflowError werfen (still verschluckt).
+- ☐ **AG3** — `send_message`-Service: kein Service-Schema, keine Sender-Id-Validierung, unkoerzierte YAML-Werte (String statt int → TypeError), Fehler erreichen den Aufrufer nie (Service wirkt immer erfolgreich).
+- ☐ **AG4** — Sender-Id-Validierung vergleicht nur 3 Bytes → Base+Offset-Fenster (128 Ids) wird falsch geprüft (falsche Warnungen bei Boundary-Crossing, keine Warnung bei ungültigen Ids).
+- ☐ **AG5** — Tote v1.3.4-Migrationslogik in init (hass.data ist bei Start immer leer); `async_get_base_ids_of_registered_gateway` würde bei Aufruf IndexError werfen (Geräte ohne connections).
+
+### Sensor (unique_id-Änderungen = Registry-Migration nötig)
+- ☐ **AS1 ⚡** — Tarif fehlt in der unique_id → Multi-Tarif-Zähler (`meter_tariffs: [1,2]`) erzeugen Kollisionen, Tarif ≥2 fehlt still.
+- ☐ **AS2** — VOC: `VOLATILE_ORGANIC_COMPOUNDS` (µg/m³) mit Einheit ppb → Statistik-Ablehnung; korrekt wäre `VOLATILE_ORGANIC_COMPOUNDS_PARTS`; Nicht-Total-Substanzen haben Einheit `''`.
+- ☐ **AS3** — Lokalisierter Substanzname in der unique_id → Sprachwechsel verwaist Entities/Statistiken.
+- ☐ **AS4** (Upstream eltakobus) — A5-10-03-Decode: `target_temp` ohne `+8`-Offset → Zieltemperatur 8 K zu niedrig und gestaucht (Encode symmetrisch falsch → Tests round-trippen grün).
+- ☐ **AS5** — A5-07-01-PIR-Sensor publiziert Roh-Byte (0–255) als einheitslosen MEASUREMENT statt ≥128-Semantik (Designentscheidung).
+
+### Cover / Switch
+- ☐ **AV1** — Restore: HA-State `open` überschreibt die gespeicherte Position mit 100 (offen = irgendwas >0!) → falsche Fahrtrichtung nach Neustart bei Zwischenposition.
+- ☐ **AV2** — F6-02-Schalter: nur obere Rocker-Hälfte (Aktionen 1/3) wird verarbeitet und togglet; untere Hälfte (0/2 = AUS, genau was `turn_off` sendet) wird ignoriert → invertierter HA-State bis zum nächsten Top-Press. Fix: 0/2 = explizit AUS, 1/3 = explizit AN.
+
+### Config-Flow / VNG-Protokoll
+- ☐ **AF1** — Kein `async_set_unique_id`/`_abort_if_unique_id_configured` → bei fehlgeschlagenem Setup kann derselbe Gateway doppelt angelegt werden (zweiter Entry überschreibt `gateway_<id>`, Unload zerlegt den jeweils anderen).
+- ☐ **AN1** — VNG `send_gateway_info`: Gateway-Typ-Code = Enum-Listenposition+1 (Aliase kollabieren!, kein Empfänger dekodiert ihn, `get_by_index` ohne −1); Client übernimmt bei N Gateways nur die LETZTE Base-Id für alle Adressübersetzungen.
+- ☐ **AN2** — Gesendete (nicht empfangene) Telegramme werden ohne Adressübersetzung ans VNG weitergereicht (`convert_bus_address_to_external_address` = toter TODO-Stub) → Mehrbus-Ambiguität bei Zweit-HA.
+- ☐ **AN3** — `CONF_ID_REGEX` erlaubt ` left/right`-Suffix auch bei base_id/sender_id, wo er bedeutungslos ist → fehlerhafte Configs passieren die Validierung.
 
 ---
 
@@ -246,6 +291,8 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 
 - `DefaultEnum.__repr__` ([util.py:103](https://github.com/grimmpp/eltako14bus)) shadowt das Builtin `repr` → `UnboundLocalError`, sobald ein `ControllerPriority`-Wert in einen f-string/`repr()` gerät. Workaround in `gateway.py` (Logging per `.name`).
 - `_TemperatureAndHumiditySensor3` (A5-04-03): Default `temperature=-20` lässt sich nicht encodieren (`ValueError: byte must be in range(0, 256)`) — `encode_message` rechnet ohne Offset. Workaround: Send-Message-Service füllt numerische Parameter weiterhin mit 0.
+- *(Audit R2, 2026-07-19)* **A5-10-03-Decode ohne `+8`-Offset** (= AS4): `target_temp = (data[1]/255)*22` statt `8 + …` → Zieltemperatur 8 K zu niedrig; Encode symmetrisch falsch, daher round-trippen Unit-Tests grün — nur echte Hardware zeigt es.
+- *(Audit R2, 2026-07-19)* **A5-30-01/-03: Learn-Bit-Encode/Decode-Asymmetrie**: `encode_message` schreibt `data[3] = learn_button` (ohne `<<3`), Decode liest Bit 3. Folge: vom Send-Message-Service erzeugte A5-30-Telegramme mit `learn_button=1` dekodieren als Teach-in und werden seit v2.2.0 von den (korrekten) Learn-Guards verworfen. Fix gehört in die Lib (Shift ergänzen).
 
 ## 4. Hinweise
 
@@ -281,3 +328,5 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 | 2026-07-19 | Phase 7 adversarial reviewt (2 Winkel): 0 Regressionen; hängender InfoPageView-Import gefangen & behoben; reale ha.yaml gegen neues Schema verifiziert | **154 Tests, 0 F**, Release v2.1.5 |
 | 2026-07-19 | hassfest via CI rot entdeckt (fehlende `zeroconf`-Dependency, vorbestehend) → deklariert | **Release v2.1.6, hassfest grün** |
 | 2026-07-19 | Phase 8: Testlauf/hassfest/Config-Validierung ✅; ha.yaml-`device_type`-Tippfehler + Beispiel-Test-Bug behoben | offen nur: manueller HA-Test, HACS-Repo-Settings (Nutzer), M14 (Hardware) |
+| 2026-07-19 | HACS-Action grün (Nutzer: Issues + Topics gesetzt); Translations (en/de) angelegt, Error-Slugs | CI komplett grün |
+| 2026-07-19 | **Audit Runde 2**: Gesamt-Codebase (6 Auditoren, 48 Kandidaten) → 20 sichere Fixes umgesetzt, 26 Befunde in Backlog (Abschnitt 6), 2 neue Upstream-Bugs dokumentiert | 163 Tests, 3-fach verifiziert, **Release v2.2.0** |

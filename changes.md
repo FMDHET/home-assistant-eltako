@@ -1,5 +1,39 @@
 # Changes and Feature List
 
+## Version 2.2.0 — Gesamt-Audit: 20 Korrektheits-Fixes + übersetzter Config-Flow
+Ergebnis eines vollständigen Codebase-Audits (6 parallele Reviewer, jeder Fix 3-fach verifiziert). Weitere gefundene Punkte, die Hardware-Tests erfordern, sind in `KI-Optimierungen.md` (Abschnitt 6) dokumentiert.
+
+**Sensoren & Taster:**
+* Bewegungs-/Fenstersensoren, die unter `sensor:` konfiguriert sind, hängen nicht mehr dauerhaft auf „an" (invert-Logik mit fehlendem Flag).
+* A5-07-01: Teach-in-Telegramme schalten den Sensor nicht mehr fälschlich; das Event-Feld `pressed` funktioniert jetzt (nutzte das Roh-Byte); Spannungswert respektiert das Verfügbarkeits-Bit. Teach-in-Guards auch für A5-30-01/-03.
+* Luftqualität (A5-09-0C): unbekannte VOC-Substanz-Codes erzeugen keinen Fehler-Traceback pro Telegramm mehr.
+* Gas-/Wasserzähler: Seriennummern-Telegramme (0x8F) werden nicht mehr als Durchfluss fehlinterpretiert.
+* Doppelte „Id"-Diagnose-Entities bei Geräten in mehreren Plattform-Sektionen behoben.
+
+**Rollladen (Cover):**
+* Position geht beim HA-Neustart nicht mehr verloren, wenn keine `time_tilts` konfiguriert sind (Restore-Fehler bei jedem Start).
+* Fahrzeit 255 crasht die Fahrbefehle nicht mehr.
+* Ein noch laufender Tilt-Vorgang kann eine anschließende Fahrt nicht mehr ungewollt stoppen.
+* Zwischenstopp-Telegramme ohne konfigurierte Fahrzeiten lassen den Status nicht mehr auf „öffnet/schließt" hängen.
+
+**Licht:** Helligkeit 1–2 dimmt nicht mehr auf 0 (Nachtlicht!); Helligkeits-Umrechnung rundet korrekt (kein Drift mehr).
+
+**Climate-Prioritätswahl (Select):** Ein beim Herunterfahren „nicht verfügbarer" Zustand wird nicht mehr als Priorität übernommen und auf den Bus gefeuert.
+
+**Konfiguration:**
+* `climate → cooling_mode → sender → gateway_id` akzeptiert jetzt (wie überall) eine Gateway-Nummer. **Hinweis:** Adress-Strings wie `FF-AA-80-00` werden dort nicht mehr akzeptiert — sie waren funktionslos, und die alte Validierung war ohnehin defekt (auch das Weglassen schlug fehl).
+* `sensor → device_class` akzeptiert jetzt auch echte Sensor-Klassen wie `temperature` (vorher scheiterte die gesamte Konfiguration).
+
+**Config-Flow (Gateway hinzufügen):** endlich richtige Texte statt roher Schlüssel (Übersetzungen EN/DE ergänzt — Custom-Integrationen laden nur `translations/`); Validierungsfehler werden nicht mehr von generischen Meldungen überdeckt; ohne konfigurierte Gateways bricht der Dialog mit klarer Meldung ab statt ein unabsendbares Formular zu zeigen.
+
+**Gateway-Verwaltung:**
+* „Read memory of bus devices": Doppelklick auf den Button kann den Empfang nicht mehr dauerhaft lahmlegen.
+* Der Nachrichten-Zähler beginnt bei 0 statt 1.
+* Beim Registrieren von Entities werden keine redundanten Base-Id-Abfragen mehr ausgelöst (O(N²)-Verhalten beim Setup).
+* Virtual Network Gateway: neu geladene Gateways ersetzen ihre alten Einträge (kein Leak, keine veralteten Base-Id-Infos an Clients).
+
+**Bekannte Einschränkung:** Über den Send-Message-Service erzeugte A5-30-Telegramme mit `learn_button=1` werden wegen eines Encode-Fehlers in der Bibliothek `eltako14bus` als Teach-in dekodiert und daher (korrekt) ignoriert — Fix gehört in die Bibliothek, siehe KI-Optimierungen.md.
+
 ## Version 2.1.6 — hassfest-Validierung grün
 * **Manifest-Validierung (`hassfest`) behoben:** Die von der Integration genutzte Kern-Komponente `zeroconf` (für die mDNS-Bekanntmachung des Virtual Network Gateway) ist jetzt als `dependencies` deklariert. Dieser hassfest-Fehler bestand schon länger und wurde durch die Aufräumarbeiten in 2.1.5 sichtbar isoliert.
 

@@ -132,11 +132,13 @@ class EnOceanGateway:
             self._base_id_change_handlers.remove(handler)
 
     def _schedule_handler(self, coro):
-        """Schedule a handler coroutine on the HA event loop, thread-safely. (A-r2)
+        """Schedule a handler coroutine on the HA event loop. (A-r2)
 
         The _fire_* methods are invoked from the serial-bus thread (receive
-        callback) and from executor threads (reconnect); hass.create_task is not
-        thread-safe and must only be called from inside the event loop.
+        callback) and from executor threads (reconnect). Behaviorally equivalent
+        to hass.create_task (which current HA implements via
+        call_soon_threadsafe itself); kept explicit so the cross-thread contract
+        of these callers is visible in one place.
         """
         self.hass.loop.call_soon_threadsafe(self.hass.async_create_task, coro)
 
@@ -305,7 +307,14 @@ class EnOceanGateway:
             # second run restores the bus callback to None (library saves/restores
             # it around the read), leaving the gateway deaf until reconnect.
             self._reading_memory_of_devices_is_running.set()
-            await asyncio.to_thread(asyncio.run, self._read_memory_of_all_bus_members())
+            try:
+                await asyncio.to_thread(asyncio.run, self._read_memory_of_all_bus_members())
+            except BaseException:
+                # if the worker could not even be spawned (executor shutdown, thread
+                # OSError), the worker's finally never runs -> clear here so the
+                # button does not stay dead
+                self._reading_memory_of_devices_is_running.clear()
+                raise
 
 
     async def _read_memory_of_all_bus_members(self):

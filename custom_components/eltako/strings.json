@@ -20,8 +20,7 @@
     },
     "error": {
       "invalid_gateway_path": "No valid gateway found for this path.",
-      "no_serial_path_available": "No serial path available. Try to reconnect your USB plug.",
-      "no_gateway_configuration_available": "No gateway configuration available. Add a gateway to the 'eltako:' section of configuration.yaml."
+      "no_serial_path_available": "No serial path available. Try to reconnect your USB plug."
     },
     "abort": {
       "no_configuration_available": "No gateway available to add. All configured gateways are already set up."
