@@ -37,6 +37,10 @@ class DeviceConf(dict):
         self.name = config.get(CONF_NAME, None)
         self[CONF_NAME] = self.name
 
+        # F1: optional HA area assigned from YAML
+        self.area = config.get(CONF_AREA, None)
+        self[CONF_AREA] = self.area
+
         self.base_id = config.get(CONF_BASE_ID, None)
         if self.base_id is not None:
             self.base_id = AddressExpression.parse(self.base_id)

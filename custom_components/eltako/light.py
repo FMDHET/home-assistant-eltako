@@ -43,12 +43,15 @@ async def async_setup_entry(
             dev_conf = None
             try:
                 dev_conf = DeviceConf(entity_config)
+                _area_start = len(entities)
                 sender_config = config_helpers.get_device_conf(entity_config, CONF_SENDER)
 
                 if dev_conf.eep in [A5_38_08]:
                     entities.append(EltakoDimmableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep))
                 elif dev_conf.eep in [M5_38_08]:
                     entities.append(EltakoSwitchableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep))
+
+                apply_area_to_entities(entities, _area_start, dev_conf)   # F1
 
             except Exception as e:
                 dev_id = dev_conf.id if dev_conf is not None else entity_config

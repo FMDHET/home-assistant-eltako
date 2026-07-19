@@ -45,6 +45,7 @@ CONF_FAST_STATUS_CHANGE: Final = "fast_status_change"
 GATEWAY_DEFAULT_NAME: Final = "EnOcean Gateway"
 OLD_GATEWAY_DEFAULT_NAME: Final = "EnOcean ESP2 Gateway"
 CONF_GATEWAY: Final = "gateway"
+CONF_AREA: Final = "area"   # F1: optional HA area per device (YAML)
 CONF_GATEWAY_ID: Final = "gateway_id"
 CONF_GATEWAY_DESCRIPTION: Final = "gateway_description"
 CONF_BASE_ID: Final = "base_id"

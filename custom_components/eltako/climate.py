@@ -46,6 +46,7 @@ async def async_setup_entry(
             
             try:
                 dev_conf = DeviceConf(entity_config, [CONF_TEMPERATURE_UNIT, CONF_MAX_TARGET_TEMPERATURE, CONF_MIN_TARGET_TEMPERATURE])
+                _area_start = len(entities)
                 sender = config_helpers.get_device_conf(entity_config, CONF_SENDER)
                 thermostat = config_helpers.get_device_conf(entity_config, CONF_ROOM_THERMOSTAT)
 
@@ -69,6 +70,7 @@ async def async_setup_entry(
                                                        dev_conf.get(CONF_MIN_TARGET_TEMPERATURE), dev_conf.get(CONF_MAX_TARGET_TEMPERATURE),
                                                        thermostat, cooling_switch, cooling_sender)
                     entities.append(climate_entity)
+                    apply_area_to_entities(entities, _area_start, dev_conf)   # F1
 
                     # H7: subscribe here (deterministic timing - registered during platform setup,
                     # before entities are added, so the initial priority event that select.py fires

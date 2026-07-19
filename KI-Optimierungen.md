@@ -290,7 +290,37 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 > Abschnitt 6 (AM1/AM2/AG1, AC1–AC8/M14) und der manuelle HA-Durchlauf lassen
 > sich mit dem V3-Test in EINER Session bündeln.
 
-### ☐ V1 — Branch-Konsolidierung: alle Features nach main überführen
+### ◑ V1 — Branch-Konsolidierung: alle Features nach main überführen
+
+**V1.1 Inventar + V1.2 Triage (2026-07-19):**
+
+| Branch | Inhalt | Entscheidung |
+|---|---|---|
+| grimmpp-patch-5 | nur Version-Bump 1.5→1.5.1 (Lib-Pins 2024) | **verwerfen** (überholt) |
+| grimmpp-patch-9 | Doku-Tippfehler „Gatways" | ☑ **übernommen** (Doku-Fix, v2.3.0) |
+| feature-branch | `!=`-Klammerung (in main gefixt), raise-Entfernung, eltako14bus 0.0.82 | **überholt** (alle Fixes in main besser) |
+| feature-branch-v1 | cover `.get()`-Restore, `async_forward_entry_setups` | **überholt** (in main via H-/Round-2-Fixes) |
+| version2.1 | ⊂ version2 (0 eigene Commits) | **verwerfen** (Teilmenge) |
+| version2 | 9 echte Features F1–F9 (Rest = veralteter Prä-v2.x-Stand) | **Feature-Extraktion**, siehe unten |
+
+**Lib-Befund:** eltako14bus 0.0.82 ist funktional kompatibel (159 Funktionstests grün), behebt aber KEINEN der 4 dokumentierten Lib-Bugs (alle empirisch noch vorhanden). Bump nur nötig für F7 (Repeater braucht `send_repeater_mode*`).
+
+**version2-Features (F1–F9), Disposition:**
+- ☑ **F1 — optionales `area`-Feld** (Geräte-Area aus YAML): nach main portiert in v2.3.0, HA-nativ via `suggested_area` + **non-destruktive** Einmalzuweisung (überschreibt manuelle User-Area NICHT, anders als upstream).
+- ☑ **F9 — `temperature_unit` optional** (Default °C): portiert v2.3.0.
+- ☐ **F5 — Climate Display/State-Fixes** ⚡ (None-Defaults statt 0°, optimistische UI, **externe-Adress-Matching** — vermutliche Ursache „Climate aktualisiert nicht"): **Hardware-Session**, hoher Wert/Aufwand.
+- ☐ **F2 — `room_sensor`** (externe HA-Temperatur an Aktor, ersetzt Fake-40°C): Hardware-Session; Debounce beim Portieren ergänzen.
+- ☐ **F4 — `ACTUATOR_ACK` (0x0F) Default-Priorität ohne Thermostat**: upstreams empirische Antwort auf AC2 — Hardware-Session zum Bestätigen.
+- ☐ **F3 — `off_temperature`** (Frostschutz-OFF): Hardware-Session, opt-in.
+- ☐ **F6 — Prioritäts-Select nur bei Thermostat** + **F9 done**: UX; F6 entfernt Entity → Registry-Migration bedenken; Hardware-Session.
+- ☐ **F7 — Repeater-Mode-Select** (Gateway als Repeater): braucht Lib-Bump 0.0.82; version2 hat Base-Id-Bug im `8B99`-Handler (nicht mitportieren!) + ESP3-Guard nötig. Zweite Welle.
+- ☐ **F8 — Frontend-Panel + WebSocket-API**: experimentell/teils kaputt (`ShaddowDataManager` unvollständig, entfernte HA-API, ext. Paket `home_assistant_eltako_frontend`). **Zurückgestellt/verworfen** bis eigenständig entschieden.
+
+**V1.3 offen:** Climate-Cluster (F2–F6) + F7 in der Hardware-Session portieren (mit AC1–AC8 bündeln — überlappender Code). **V1.4 offen:** obsolete Remote-Branches im FMDHET-Fork löschen (grimmpp-patch-5, feature-branch, feature-branch-v1, version2.1; version2 nach vollständiger Feature-Extraktion).
+
+---
+
+### ☐ V1 (Original-Beschreibung) — Branch-Konsolidierung: alle Features nach main überführen
 **Ziel:** Kein Feature liegt mehr nur in einem Seitenzweig; main ist die einzige Quelle der Wahrheit.
 **Ist-Stand (2026-07-19):** 6 Remote-Branches sind NICHT in main gemergt: `feature-branch`, `feature-branch-v1`, `grimmpp-patch-5`, `grimmpp-patch-9`, `version2`, `version2.1`. (Alle `stability-fixes-*`, `hassfest-zeroconf-dep` sowie `heating`, `integration-FLGTF55`, `EEP-A5-04-01-and-A5-07-01`, `feature/invert-sensor-signal`, `feature/testing`, `grimmpp-patch-1–4/6–8` sind bereits enthalten.)
 **Schritte:**
@@ -375,3 +405,5 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 | 2026-07-19 | HACS-Action grün (Nutzer: Issues + Topics gesetzt); Translations (en/de) angelegt, Error-Slugs | CI komplett grün |
 | 2026-07-19 | **Audit Runde 2**: Gesamt-Codebase (6 Auditoren, 48 Kandidaten) → 20 sichere Fixes umgesetzt, 26 Befunde in Backlog (Abschnitt 6), 2 neue Upstream-Bugs dokumentiert | 163 Tests, 3-fach verifiziert, **Release v2.2.0** |
 | 2026-07-19 | **Agenda Runde 3** (Abschnitt 7): V1 Branch-Konsolidierung (6 ungemergte Branches inventarisiert), V2 Komplettanalyse+Roadmap, V3 BaseID-Schreiben (Schreibpfad fehlt in beiden Libs, CO_WR_IDBASE-Limit ~10×) | Reihenfolge V1→V2→V3 festgelegt |
+| 2026-07-19 | **V1.1/1.2**: 6 Branches getriagt (4 verwerfen/überholt, version2 = 9 Features F1–F9); eltako14bus 0.0.82 als kompatibel-aber-bugfrei-lose geprüft | Triage-Tabelle in Abschnitt 7 |
+| 2026-07-19 | **V1.3a**: F1 (area, non-destruktiv) + F9 (temp_unit optional) + Doku-Fix nach main portiert; 6 neue Tests | 169 Tests grün, **Release v2.3.0** |

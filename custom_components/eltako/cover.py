@@ -38,11 +38,13 @@ async def async_setup_entry(
 
             try:
                 dev_conf = DeviceConf(entity_config, [CONF_DEVICE_CLASS, CONF_TIME_CLOSES, CONF_TIME_OPENS, CONF_TIME_TILTS])
+                _area_start = len(entities)
                 sender_config = config_helpers.get_device_conf(entity_config, CONF_SENDER)
 
-                entities.append(EltakoCover(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, 
-                                            sender_config.id, sender_config.eep, 
+                entities.append(EltakoCover(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep,
+                                            sender_config.id, sender_config.eep,
                                             dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_TIME_CLOSES), dev_conf.get(CONF_TIME_OPENS), dev_conf.get(CONF_TIME_TILTS)))
+                apply_area_to_entities(entities, _area_start, dev_conf)   # F1
 
             except Exception as e:
                 LOGGER.warning("[%s] Could not load configuration", platform)
