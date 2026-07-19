@@ -1,5 +1,14 @@
 # Changes and Feature List
 
+## Version 2.1.5 — Aufräumen & Korrektheit (Phase 7)
+* **Wetterstation:** Ein selbst vergebener Gerätename wird nicht mehr durch den Standardnamen überschrieben.
+* **Taster mit mehreren Kanälen / gleicher Taster auf mehreren Gateways:** Die Zuordnung von Drücken/Loslassen (und `push_duration`) wird nicht mehr zwischen Entities vermischt.
+* **Sensor-Anzeige korrekt:** Ungültige Geräteklassen behoben — Batteriespannung ist jetzt „Spannung", Fenstergriff und Regen nutzen keine ungültigen Klassen mehr (Home Assistant validiert diese zunehmend streng).
+* **Weniger Grundlast:** Push-Entities werden nicht mehr unnötig zyklisch abgefragt (`should_poll = False`).
+* **Konfigurations-Validierung robuster & zukunftssicher:** Interne, nicht-öffentliche Validatoren durch offizielle ersetzt (Gateway-IDs als Ganzzahl, Port 1–65535, Zeitwerte als Zahl). Behebt am Rande auch die Gateway-Id-Erkennung.
+* **Aufgeräumt:** Ungültiger Manifest-Schlüssel entfernt (behebt `hassfest`), sowie diverser toter Code (unfertiges Frontend-Panel samt Platzhalter-Seite, ungenutzte Funktionen, doppelte Property, fehleranfällige Log-Ausgaben).
+* Testsuite: 154 grün (2 neue Regressionstests). Adversarial reviewt, keine Regressionen.
+
 ## Version 2.1.4 — Robustheit mittlerer Priorität (Phase 6)
 * **Dimmer:** Ein Telegramm mit unerwartetem Funktyp (weder 4BS noch RPS, z. B. 1BS) legt den Empfang nicht mehr lahm (vorher `UnboundLocalError`).
 * **Sensor-Plattform zukunftssicher:** Die interne Sensor-Beschreibung ist jetzt ein „frozen" Datentyp — verhindert einen künftigen Import-Absturz der gesamten Sensor-Plattform mit neueren Home-Assistant-Versionen.

@@ -121,15 +121,15 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
 ### P3 — NIEDRIG (Korrektheit, Hygiene, Zukunftssicherheit)
 
 - ☑ **N1 — Invertierte Vergleichskette bei `invert_signal`** — [binary_sensor.py:276/286/293](custom_components/eltako/binary_sensor.py#L276): `a != b == 1` wird als `(a != b) and (b == 1)` ausgewertet → mit `invert_signal: true` dauerhaft falsche Zustände. Klammern setzen. · S *(erledigt; D5-00-01 zusätzlich auf korrekte Fenster-Semantik `contact==0 ⇒ offen` gefixt — war testgedeckt falsch herum)*
-- ☐ **N2 — `_attr_should_poll = True` für reine Push-Entities** — [device.py:28](custom_components/eltako/device.py#L28); unnötige zyklische Last. Auf `False`. · S
-- ☐ **N3 — Ungültige `device_class`-Strings** — [sensor.py:151/193/86-93](custom_components/eltako/sensor.py#L151) (`'window'`, `'rain'`, BATTERY mit Volt); HA validiert zunehmend hart. Korrigieren/weglassen. · S
-- ☐ **N4 — `manifest.json`: ungültiger Schlüssel `"panel_custom"`** — [manifest.json](custom_components/eltako/manifest.json) (hassfest-Fehler). Entfernen. · S
-- ☐ **N5 — `cv.Number` ist kein öffentliches HA-API** — [schema.py:58/252-274](custom_components/eltako/schema.py#L58): funktioniert nur durch internen Re-Export; zudem lässt es Floats durch (→ M9). `vol.Coerce(int)`/`cv.positive_int`. · S
-- ☐ **N6 — Logging-Format-Fehler** — [config_flow.py:160-163](custom_components/eltako/config_flow.py#L160-L163), [eltako_integration_init.py:116](custom_components/eltako/eltako_integration_init.py#L116): erzeugen „--- Logging error ---"-Tracebacks, verdecken echte Fehler. · S
+- ☑ **N2 — `_attr_should_poll = True` für reine Push-Entities** — auf `False`. · S *(Phase 7, 2026-07-19)*
+- ☑ **N3 — Ungültige `device_class`-Strings** — BATTERY+Volt → VOLTAGE, `'window'` (Binary-Klasse) → None, `'rain'` → None (+ `""`-Unit → None). Regressionstest prüft alle Sensor-Beschreibungen. · S *(Phase 7, 2026-07-19)*
+- ☑ **N4 — `manifest.json`: ungültiger Schlüssel `"panel_custom"`** — entfernt (+ vestigiale `frontend`-Dependency, da Panel-Feature tot). · S *(Phase 7, 2026-07-19)*
+- ☑ **N5 — `cv.Number` ist kein öffentliches HA-API** — ersetzt durch öffentliche Validatoren: IDs → `cv.positive_int`, Port → `cv.port`, Delay/Timeouts → `cv.positive_float`, Temperaturen → `vol.Coerce(float)`. Reale `ha.yaml` + `test_config` verifiziert. · S *(Phase 7, 2026-07-19)*
+- ☑ **N6 — Logging-Format-Fehler** — die echten Crashes (2× `%s`, 1 Argument) waren die config_flow-Zeilen (mit M10 behoben); fragile f-string-+-%-args-Mischung in init bereinigt. · S *(Phase 7, 2026-07-19)*
 - ☑ **N7 — Service `send_message`: bare `except:`, EEP-Konstruktor außerhalb try, Copy-Paste-Fehlermeldung, `import inspect` in Funktion** — [gateway.py:301-341](custom_components/eltako/gateway.py#L301-L341). · S *(erledigt; zusätzlich: fehlende EEP-Parameter zerstören keine Enum-Defaults mehr — `priority=0`-Crash behoben)*
-- ☐ **N8 — `LAST_RECEIVED_TELEGRAMS` als Klassen-Dict** — [binary_sensor.py:121](custom_components/eltako/binary_sensor.py#L121): über alle Gateways geteilt, nie geleert → Vermischung bei Multi-Gateway, Mini-Leak. Instanz-/Gateway-bezogen. · S *(Review 2026-07-18: betrifft seit v2.1.3 zusätzlich das knopfspezifische Release-Event — bei gleichem Taster auf zwei Gateways verliert die zweite Entity ihr Release-Event. Fix: Instanz-Attribut statt Klassen-Dict.)*
-- ☐ **N9 — Sensor-Kleinkram** — [sensor.py:580](custom_components/eltako/sensor.py#L580) (`msg.data[3]` ohne Längencheck), [sensor.py:306](custom_components/eltako/sensor.py#L306) (Weather-Station ignoriert Nutzernamen), [sensor.py:362-363](custom_components/eltako/sensor.py#L362-L363) (VOC/Language harte Key-Zugriffe). · S
-- ☐ **N10 — Toter/riskanter Code entfernen** — auskommentierte Panel-Blöcke ([eltako_integration_init.py:193-235](custom_components/eltako/eltako_integration_init.py#L193-L235), `register_static_path` wurde in HA 2025.7 entfernt!), `import glob` vor Docstring ([gateway.py:1](custom_components/eltako/gateway.py#L1)), doppelte `dev_id`-Property ([device.py:139/149](custom_components/eltako/device.py#L139)), `get_entity_from_hass` (ungenutzt, nutzt internes HA-API, [device.py:196-204](custom_components/eltako/device.py#L196-L204)), tote `validate_ids_of_climate` ([climate.py:91-96](custom_components/eltako/climate.py#L91-L96)). · M
+- ☑ **N8 — `LAST_RECEIVED_TELEGRAMS` als Klassen-Dict** — jetzt Instanz-Attribut. Behebt Multi-Gateway-Vermischung, das seit v2.1.3 betroffene Release-Event **und** (Review-Erkenntnis) die A5-30-03-Mehrkanal-Kollision (5 Instanzen teilten sich einen dev_id-Key). Regressionstest. · S *(Phase 7, 2026-07-19)*
+- ☑ **N9 — Sensor-Kleinkram** — `msg.data[3]` mit Längencheck; Weather-Station respektiert Nutzernamen (`dev_name == dev_conf.name` war immer wahr); VOC/Language via `.get()` mit Schema-Defaults. · S *(Phase 7, 2026-07-19)*
+- ☑ **N10 — Toter/riskanter Code entfernt** — auskommentierte Panel-Blöcke + zugehörige Imports (os, panel_custom, websocket_api, async_register_built_in_panel), doppelte `dev_id`-Property, `get_entity_from_hass` (+ `DATA_ENTITY_PLATFORM`-Import), tote `validate_ids_of_climate`, sowie die verwaiste `frontend/`-View (Review-Nachtrag). `import glob`/`inspect` in gateway.py sind genutzt (Docstring bereits an Zeile 1) → kein Handlungsbedarf. · M *(Phase 7, 2026-07-19)*
 
 ---
 
@@ -215,8 +215,11 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 - Adversarial reviewt (3 Winkel): Kernänderungen bestätigt; 1 latenter `KeyError` (unmapped `ftd14`) in den angefassten Funktionen gehärtet. 6 neue Regressionstests. **152 Tests grün.**
 - **Offen M14** — Climate: toter Periodik-Task (auskommentiert), Reaktivierung nur mit Hardware sinnvoll.
 
-### ☐ Phase 7 — Aufräumen & Zukunftssicherheit (N1–N10)
-- Korrektheits-Fixes zuerst (N1!), dann Hygiene/toter Code
+### ☑ Phase 7 — Aufräumen & Zukunftssicherheit (N1–N10) — **ERLEDIGT 2026-07-19 (v2.1.5)**
+- N1/N7 bereits in früheren Phasen erledigt. N2–N6, N8–N10 in Phase 7.
+- Korrektheit: N3 (device_class), N8 (Instanz-Dict, behebt Multi-Gateway + A5-30-03-Kollision), N9 (Weather-Name immer überschrieben).
+- Hygiene/Zukunftssicherheit: N2 (should_poll), N5 (öffentliche Validatoren), N6 (Logging), N4 (Manifest/hassfest), N10 (toter Code + frontend/).
+- Adversarial reviewt (2 Winkel): **0 Regressionen**; Review fand zusätzlich einen hängenden `InfoPageView`-Import (behoben) und bestätigte den A5-30-03-Bonus-Fix. 4 neue Regressionstests (Phase 6+7). **154 Tests grün.**
 
 ### ☐ Phase 8 — Abschluss-Verifikation
 1. Kompletter Testlauf + ggf. neue Regressionstests für K1–K6
@@ -268,3 +271,5 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 | 2026-07-18 | Phase 4 adversarial reviewt (8 Winkel, 1-Vote-Verify): 4 CONFIRMED eingearbeitet (Generation-Token, Lifecycle-Lock, sortierte Chord-IDs, Serialize-Härtung), 4 REFUTED | **146 Tests, 0 F** |
 | 2026-07-19 | Phase 6: M4, M7–M10, M12, M13 auf Branch `stability-fixes-phase6`; datetime.py entfernt; 6 neue Regressionstests | 152 Tests grün |
 | 2026-07-19 | Phase 6 adversarial reviewt (3 Winkel): Kernänderungen bestätigt, `ftd14`-KeyError gehärtet (config_flow + init) | **152 Tests, 0 F**, Release v2.1.4 |
+| 2026-07-19 | Phase 7: N2–N6, N8–N10 auf Branch `stability-fixes-phase7`; totes frontend/ + Panel-Reste entfernt; 2 neue Regressionstests | 154 Tests grün |
+| 2026-07-19 | Phase 7 adversarial reviewt (2 Winkel): 0 Regressionen; hängender InfoPageView-Import gefangen & behoben; reale ha.yaml gegen neues Schema verifiziert | **154 Tests, 0 F**, Release v2.1.5 |
