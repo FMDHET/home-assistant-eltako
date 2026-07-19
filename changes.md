@@ -1,5 +1,8 @@
 # Changes and Feature List
 
+## Version 2.1.6 — hassfest-Validierung grün
+* **Manifest-Validierung (`hassfest`) behoben:** Die von der Integration genutzte Kern-Komponente `zeroconf` (für die mDNS-Bekanntmachung des Virtual Network Gateway) ist jetzt als `dependencies` deklariert. Dieser hassfest-Fehler bestand schon länger und wurde durch die Aufräumarbeiten in 2.1.5 sichtbar isoliert.
+
 ## Version 2.1.5 — Aufräumen & Korrektheit (Phase 7)
 * **Wetterstation:** Ein selbst vergebener Gerätename wird nicht mehr durch den Standardnamen überschrieben.
 * **Taster mit mehreren Kanälen / gleicher Taster auf mehreren Gateways:** Die Zuordnung von Drücken/Loslassen (und `push_duration`) wird nicht mehr zwischen Entities vermischt.
