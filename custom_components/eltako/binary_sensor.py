@@ -41,6 +41,7 @@ async def async_setup_entry(
             for entity_config in config[platform_id]:
                 try:
                     dev_conf = config_helpers.DeviceConf(entity_config, [CONF_DEVICE_CLASS, CONF_INVERT_SIGNAL])
+                    _area_start = len(entities)
                     if dev_conf.eep.eep_string in CONF_EEP_SUPPORTED_BINARY_SENSOR:
                         if dev_conf.eep == A5_30_03:
                             name = "Digital Input 0"
@@ -73,8 +74,10 @@ async def async_setup_entry(
                                                                 dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_INVERT_SIGNAL),
                                                                 EntityDescription(key="low_battery", name=name) ))
                         else:
-                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, 
+                            entities.append(EltakoBinarySensor(platform_id, gateway, dev_conf.id, dev_conf.name, dev_conf.eep,
                                                                 dev_conf.get(CONF_DEVICE_CLASS), dev_conf.get(CONF_INVERT_SIGNAL)))
+
+                        apply_area_to_entities(entities, _area_start, dev_conf)   # F1
 
                 except Exception as e:
                     LOGGER.warning("[%s] Could not load configuration for platform_id %s", platform, platform_id)

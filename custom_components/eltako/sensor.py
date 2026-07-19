@@ -308,7 +308,8 @@ async def async_setup_entry(
             try:
                 dev_conf = DeviceConf(entity_config, [CONF_METER_TARIFFS])
                 dev_name = dev_conf.name
-            
+                _area_start = len(entities)
+
                 if dev_conf.eep in [A5_13_01]:
                     # N9: only fall back to the default when no name was configured.
                     # Was `dev_name == dev_conf.name` (always True) -> user names ignored.
@@ -390,6 +391,8 @@ async def async_setup_entry(
                     #TODO: add twilight
                     #TODO: add daylight
                     # both are currently combined in illumination
+
+                apply_area_to_entities(entities, _area_start, dev_conf)   # F1
 
             except Exception as e:
                 LOGGER.warning("[%s] Could not load configuration", platform)

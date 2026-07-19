@@ -36,10 +36,12 @@ async def async_setup_entry(
         for entity_config in config[platform]:
             try:
                 dev_conf = DeviceConf(entity_config)
+                _area_start = len(entities)
                 sender_config = config_helpers.get_device_conf(entity_config, CONF_SENDER)
 
                 entities.append(EltakoSwitch(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep))
-            
+                apply_area_to_entities(entities, _area_start, dev_conf)   # F1
+
             except Exception as e:
                 LOGGER.warning("[%s] Could not load configuration", platform)
                 LOGGER.critical(e, exc_info=True)

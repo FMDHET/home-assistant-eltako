@@ -1,5 +1,13 @@
 # Changes and Feature List
 
+## Version 2.3.0 — Neue Features aus Branch-Konsolidierung (V1)
+Aus dem Branch-Inventar (V1) nach `main` überführte, ohne Hardware testbare Features:
+* **Geräte-Bereich (Area) aus YAML:** Jedes Gerät kann jetzt `area: Wohnzimmer` angeben — der Bereich wird bei Bedarf angelegt und dem Gerät zugewiesen. **Non-destruktiv:** eine manuell in Home Assistant gesetzte Zuordnung wird NICHT überschrieben (nur gesetzt, wenn das Gerät noch keinen Bereich hat). Gilt für alle Geräte-Plattformen.
+* **Climate `temperature_unit` ist jetzt optional** (Default °C).
+* Doku-Tippfehler korrigiert (Gateways).
+
+*Hinweis:* Weitere Features aus dem `version2`-Branch (externer Raumfühler `room_sensor`, `off_temperature`, Prioritäts-Defaults, Repeater-Modus, Climate-Anzeige-Fixes, Frontend-Panel) sind analysiert und für die Hardware-Test-Session vorgemerkt (Details in `KI-Optimierungen.md`, Abschnitt 7).
+
 ## Version 2.2.0 — Gesamt-Audit: 20 Korrektheits-Fixes + übersetzter Config-Flow
 Ergebnis eines vollständigen Codebase-Audits (6 parallele Reviewer, jeder Fix 3-fach verifiziert). Weitere gefundene Punkte, die Hardware-Tests erfordern, sind in `KI-Optimierungen.md` (Abschnitt 6) dokumentiert.
 

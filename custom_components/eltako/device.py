@@ -7,6 +7,7 @@ from eltakobus.eep import EEP
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers import area_registry as ar, device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, dispatcher_send
 from homeassistant.helpers.entity import Entity
@@ -19,8 +20,12 @@ from . import config_helpers
 
 class EltakoEntity(Entity):
     """Parent class for all entities associated with the Eltako component."""
-    
-    
+
+    # F1: HA area from YAML (config_helpers.CONF_AREA). Set by the platform setup
+    # after construction; None = no area configured.
+    _attr_dev_area: str | None = None
+
+
     def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str="Device", dev_eep: EEP=None, description_key:str=None):
         """Initialize the device."""
         self._attr_has_entity_name = True
@@ -73,6 +78,10 @@ class EltakoEntity(Entity):
             # M13: dev_eep can be None (e.g. gateway-owned diagnostic entities) -> AttributeError
             model=self.dev_eep.eep_string if self.dev_eep else None,
             via_device=(DOMAIN, self.gateway.serial_path),
+            # F1: NOTE - deliberately NOT using DeviceInfo.suggested_area here.
+            # It is deprecated (removed in HA 2026.9) and would be passed on every
+            # device. Area assignment is handled entirely by _assign_area_if_unset()
+            # below (non-destructive), which covers new AND existing devices.
         )
     
 
@@ -87,6 +96,12 @@ class EltakoEntity(Entity):
             )
         )
 
+        # F1: assign the configured area to devices that exist already but have NO
+        # area yet (suggested_area only takes effect on creation). Deliberately
+        # non-destructive: a user's manual area assignment is never overwritten.
+        if self._attr_dev_area:
+            self._assign_area_if_unset(self._attr_dev_area)
+
         # load initial value
         if isinstance(self, RestoreEntity):
             # check if value is not set
@@ -100,6 +115,23 @@ class EltakoEntity(Entity):
                 if latest_state is not None:
                     self.load_value_initially(latest_state)
 
+
+    def _assign_area_if_unset(self, area_name: str) -> None:
+        """Ensure the area exists and link this device to it - only if it has no
+        area yet. Never overrides a manual user assignment. (F1)"""
+        try:
+            area_reg = ar.async_get(self.hass)
+            area = area_reg.async_get_area_by_name(area_name)
+            if area is None:
+                area = area_reg.async_create(area_name)
+            device_reg = dr.async_get(self.hass)
+            device = device_reg.async_get_device(identifiers={(DOMAIN, b2s(self.dev_id))})
+            if device is not None and device.area_id is None:
+                device_reg.async_update_device(device.id, area_id=area.id)
+                LOGGER.debug("[%s %s] Assigned device to area '%s'.", self._attr_ha_platform, self.dev_id, area_name)
+        except Exception:
+            # area assignment is best-effort; never break entity setup over it
+            LOGGER.exception("[%s %s] Could not assign area '%s'.", self._attr_ha_platform, self.dev_id, area_name)
 
     def load_value_initially(self, latest_state:State):
         """This function is implemented in the concrete devices classes"""
@@ -188,6 +220,15 @@ class EltakoEntity(Entity):
         event_id = config_helpers.get_bus_event_type(self.gateway.dev_id, SIGNAL_SEND_MESSAGE)
         dispatcher_send(self.hass, event_id, msg)
         
+
+def apply_area_to_entities(entities:list[EltakoEntity], start_index:int, dev_conf) -> None:
+    """F1: set the configured HA area on every entity appended for one device
+    config (entities[start_index:]). No-op when no area is configured."""
+    area = getattr(dev_conf, 'area', None)
+    if not area:
+        return
+    for e in entities[start_index:]:
+        e._attr_dev_area = area
 
 def validate_actuators_dev_and_sender_id(entities:list[EltakoEntity]):
     """Only call it for actuators."""

@@ -1,7 +1,7 @@
-# Usage of Gatways
+# Usage of Gateways
 
 Hints: 
-* Have you checked out the different gatewys and their characteristics? [Supported Gateways](../gateways/readme.md)
+* Have you checked out the different gateways and their characteristics? [Supported Gateways](../gateways/readme.md)
 * Have you checked out the support for multiple gateways at the same time? [Multiple Gateway Support](../multiple-gateway-support/readme.md)
 
 ## How to configure gateways
