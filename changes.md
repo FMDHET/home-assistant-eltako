@@ -1,5 +1,17 @@
 # Changes and Feature List
 
+## Version 2.1.4 — Robustheit mittlerer Priorität (Phase 6)
+* **Dimmer:** Ein Telegramm mit unerwartetem Funktyp (weder 4BS noch RPS, z. B. 1BS) legt den Empfang nicht mehr lahm (vorher `UnboundLocalError`).
+* **Sensor-Plattform zukunftssicher:** Die interne Sensor-Beschreibung ist jetzt ein „frozen" Datentyp — verhindert einen künftigen Import-Absturz der gesamten Sensor-Plattform mit neueren Home-Assistant-Versionen.
+* **Taster-Info-Sensor:** Fremde/manuell ausgelöste Events mit gleicher Event-ID führen nicht mehr zu einem Fehler.
+* **Gateway-Einrichtung robuster:**
+  * Der Gateway-Typ wird bei der Pfad-Validierung jetzt eindeutig aus der Konfiguration bestimmt (per Gateway-Id) statt über eine fehleranfällige Namens-Teilstring-Suche (die z. B. „lan" in „Planung" traf).
+  * Abweichend benannte Gateways und Konfigurationen ohne Gateway-Abschnitt führen zu einer klaren Fehlermeldung statt zu einem Absturz.
+  * Ein nicht als serielles Gateway unterstützter Typ (z. B. `ftd14`) meldet dies sauber, statt die Einrichtung mit einem `KeyError` abzubrechen.
+* **Gerätemodell:** Diagnose-Entities ohne EEP crashen die Geräteinfo nicht mehr.
+* **Aufgeräumt:** Die tote, nie geladene `datetime`-Plattform wurde entfernt (ihre Funktion — Zeitstempel der letzten Nachricht — gibt es weiterhin als Sensor).
+* 6 neue Regressionstests; Testsuite: 152 grün.
+
 ## Version 2.1.3 — Taster-Events zurück, Virtual Network Gateway gehärtet
 * **Knopfspezifische Taster-Events sind zurück (F6-02-Wandtaster).** Zusätzlich zum Basis-Event (`eltako_btn_pressed_<adresse>`) wird wieder ein Event je Knopf gefeuert (z. B. `eltako_btn_pressed_<adresse>_rt`) — wie vor v2.0.0. Automationen können damit ohne Bedingung direkt auf einen Knopf triggern; Prä-v2.0.0-Automationen funktionieren wieder. Beim Loslassen wird das Event des zuvor gedrückten Knopfs gefeuert (inkl. `push_duration_in_sec`). **Hinweis:** Wer auf Basis- UND Knopf-Event hört, triggert doppelt. Zwei-Tasten-Kombinationen haben jetzt eine stabile, sortierte ID (`.._lt_rb`, nie `.._rb_lt`).
 * **Virtual Network Gateway (TCP-Server für Zweit-Instanzen) umfassend gehärtet:**
