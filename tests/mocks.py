@@ -125,7 +125,10 @@ class GatewayMock(EnOceanGateway):
         pass
 
     def add_connection_state_changed_handler(self, handler):
-        pass
+        # B1: record the handler so tests can assert registration and drive
+        # connect/disconnect. Unlike the real gateway we do NOT schedule the
+        # immediate notify - there is no running loop in unit tests.
+        self._connection_state_handlers.append(handler)
 
 
 class LatestStateMock():

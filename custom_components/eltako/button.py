@@ -114,6 +114,8 @@ class TeachInButton(AbstractButton):
 
 class GatewayReconnectButton(AbstractButton):
     """Button for reconnecting serial bus"""
+    # B1: must stay pressable WHILE disconnected - it is the manual recovery action.
+    _attr_follow_gateway_availability = False
 
     def __init__(self, platform: str, gateway: EnOceanGateway):
         self.entity_description = ButtonEntityDescription(
@@ -144,6 +146,8 @@ class GatewayReconnectButton(AbstractButton):
 
 class GatewayReadAllDevicesButton(AbstractButton):
     """Button for reconnecting serial bus"""
+    # B1: gateway-owned config action - stays visible with the gateway device.
+    _attr_follow_gateway_availability = False
 
     def __init__(self, platform: str, gateway: EnOceanGateway):
         self.entity_description = ButtonEntityDescription(

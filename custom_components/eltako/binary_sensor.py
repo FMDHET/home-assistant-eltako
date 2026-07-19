@@ -415,6 +415,9 @@ class EltakoBinarySensor(AbstractBinarySensor):
 class GatewayConnectionState(AbstractBinarySensor):
     """Protocols last time when message received"""
     _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3
+    # B1: this IS the sensor that reports the connection - it must stay visible
+    # while disconnected (otherwise it would show "unavailable" instead of "off").
+    _attr_follow_gateway_availability = False
 
     def __init__(self, platform: str, gateway: EnOceanGateway):
         key = "Gateway_Connection_State"
