@@ -19,9 +19,10 @@ class EltakoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the Eltako config flows."""
 
     VERSION = 1
-    # B2: bumped 1 -> 2 so pre-v2.4.0 entries (unique_id=None) trigger async_migrate_entry,
-    # which backfills the config-entry unique_id (AF1). New entries are created at 1.2.
-    MINOR_VERSION = 2
+    # B2: 1 -> 2 backfills the config-entry unique_id (AF1) for pre-v2.4.0 entries.
+    # B3/AS3: 2 -> 3 remaps VOC air-quality entity unique_ids to a language-independent id.
+    # New entries are created at the current MINOR_VERSION (no migration needed).
+    MINOR_VERSION = 3
     MANUAL_PATH_VALUE = "Custom path"
 
     def __init__(self) -> None:
