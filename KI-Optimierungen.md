@@ -367,10 +367,10 @@ Ergebnis in **`ANALYSE-UND-ROADMAP.md`** (eigene Datei): Messungen (Coverage 53 
 
 ## 3b. Neu entdeckte Bibliotheks-Bugs (eltako14bus 0.0.73) — Kandidaten für Upstream-Issues
 
-- `DefaultEnum.__repr__` ([util.py:103](https://github.com/grimmpp/eltako14bus)) shadowt das Builtin `repr` → `UnboundLocalError`, sobald ein `ControllerPriority`-Wert in einen f-string/`repr()` gerät. Workaround in `gateway.py` (Logging per `.name`).
-- `_TemperatureAndHumiditySensor3` (A5-04-03): Default `temperature=-20` lässt sich nicht encodieren (`ValueError: byte must be in range(0, 256)`) — `encode_message` rechnet ohne Offset. Workaround: Send-Message-Service füllt numerische Parameter weiterhin mit 0.
-- *(Audit R2, 2026-07-19)* **A5-10-03-Decode ohne `+8`-Offset** (= AS4): `target_temp = (data[1]/255)*22` statt `8 + …` → Zieltemperatur 8 K zu niedrig; Encode symmetrisch falsch, daher round-trippen Unit-Tests grün — nur echte Hardware zeigt es.
-- *(Audit R2, 2026-07-19)* **A5-30-01/-03: Learn-Bit-Encode/Decode-Asymmetrie**: `encode_message` schreibt `data[3] = learn_button` (ohne `<<3`), Decode liest Bit 3. Folge: vom Send-Message-Service erzeugte A5-30-Telegramme mit `learn_button=1` dekodieren als Teach-in und werden seit v2.2.0 von den (korrekten) Learn-Guards verworfen. Fix gehört in die Lib (Shift ergänzen).
+- ☑ `DefaultEnum.__repr__` ([util.py:103](https://github.com/grimmpp/eltako14bus)) shadowt das Builtin `repr` → `UnboundLocalError`, sobald ein `ControllerPriority`-Wert in einen f-string/`repr()` gerät. **GEPATCHT v2.10.0** (B5, `eltakobus_patches.py`). Der gateway.py-Workaround (Logging per `.name`) bleibt als Gürtel-und-Hosenträger.
+- ⏸ `_TemperatureAndHumiditySensor3` (A5-04-03): Default `temperature=-20` lässt sich nicht encodieren (`ValueError: byte must be in range(0, 256)`) — `encode_message` rechnet ohne Offset. Workaround: Send-Message-Service füllt numerische Parameter weiterhin mit 0. **ZURÜCKGESTELLT (B5→Hardware-Session):** ändert an Hardware gesendete Telegramme, ohne Gerät nicht verifizierbar.
+- ⏸ *(Audit R2, 2026-07-19)* **A5-10-03-Decode ohne `+8`-Offset** (= AS4): `target_temp = (data[1]/255)*22` statt `8 + …` → Zieltemperatur 8 K zu niedrig; Encode symmetrisch falsch, daher round-trippen Unit-Tests grün — nur echte Hardware zeigt es. **ZURÜCKGESTELLT (B5→Hardware-Session):** Climate, Decode+Encode müssen konsistent auf den Spec-Wert; ohne Gerät riskant.
+- ☑ *(Audit R2, 2026-07-19)* **A5-30-01/-03: Learn-Bit-Encode/Decode-Asymmetrie**: `encode_message` schreibt `data[3] = learn_button` (ohne `<<3`), Decode liest Bit 3. Folge: vom Send-Message-Service erzeugte A5-30-Telegramme mit `learn_button=1` dekodieren als Teach-in und werden seit v2.2.0 von den (korrekten) Learn-Guards verworfen. **GEPATCHT v2.10.0** (B5, `eltakobus_patches.py`, Wrapper setzt Bit 3; Round-Trip-Test).
 
 ## 4. Hinweise
 

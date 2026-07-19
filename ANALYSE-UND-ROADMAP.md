@@ -182,7 +182,7 @@ Konsolidiert aus dieser Analyse **plus** dem bestehenden Backlog (`KI-Optimierun
 | B2 | ☑ `async_migrate_entry` + Config-Entry-Versionierung (1.2) etablieren + unique_id-Backfill (AF1) — **ERLEDIGT v2.6.0** (2026-07-19); Entity-Registry-Migrationen folgen in B3 | HA §3c | M |
 | B3 | unique_id-Backlog nach B2 ausrollen: ☑ Tarif in Zähler-Id (**AS1, v2.7.0**), ☑ VOC-Sprach-/Klassen-Id (**AS2/AS3, v2.8.0**), ⏸ left/right-Diskriminator (AM3 — zurückgestellt, Nutzer-Entscheidung) | Backlog AS/AM | M |
 | B4 | ☑ `repairs`-Issue für Base-Id-Fehler (**AG1** sichtbar) + `diagnostics.py` — **ERLEDIGT v2.9.0** | HA §4 | M |
-| B5 | `eltakobus_patches.py` (4 Lib-Bugs) + Drift-Guard-Test für `tcp2serial_hardened.run()` | §6 | S–M |
+| B5 | ☑ `eltakobus_patches.py` + Drift-Guard-Tests — **ERLEDIGT v2.10.0**: 2/4 Lib-Bugs gepatcht (DefaultEnum-repr, A5-30-learn-bit) + Drift-Guard für `tcp2serial_hardened.run()`; 2 Bugs (A5-04-03/A5-10-03, hardware-bindend) → Hardware-Session | §6 | S–M |
 | B6 | Test-Welle P1: `test_config_flow.py`, `test_init_setup.py` → ~70 % Coverage | §5 | M |
 | B7 | OptionsFlow für `general_settings` + Gateway-Tuning (erster Schritt aus der YAML-Doppelpflege) | HA §1 | M |
 | B8 | Doku-Vollrevision D5/D9/U1/U3 (LAN-Felder, Single-Source `ha.yaml`, device_type-Tabelle) | §7 | M |

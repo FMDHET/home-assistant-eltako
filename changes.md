@@ -1,5 +1,13 @@
 # Changes and Feature List
 
+## Version 2.10.0 — Roadmap-Welle B (B5): Bibliotheks-Bugfixes in der Integration
+* **Bekannte `eltako14bus`-Fehler werden jetzt in der Integration korrigiert** (`eltakobus_patches.py`), ohne die gepinnte Bibliothek zu forken. Zwei hardware-unabhängige Fehler sind behoben:
+  * **Absturz beim Formatieren von Enum-Werten:** `DefaultEnum.__repr__` warf einen `UnboundLocalError`, sobald ein Enum-Wert (z. B. eine Regler-Priorität) in einen Log-/Text-Ausdruck geriet. Behoben.
+  * **A5-30 Learn-Bit falsch codiert:** Über den Sende-Service erzeugte A5-30-Telegramme (Digitaleingänge) schrieben das Learn-Bit ins falsche Bit → sie wurden beim Dekodieren fälschlich als Teach-in erkannt und von den (korrekten) Learn-Guards verworfen. Encode setzt das Bit jetzt an die richtige Stelle (Bit 3), passend zum Decode.
+* **Drift-Schutz:** Jeder Patch hat einen Test, der prüft, dass die gepinnte Bibliothek den ursprünglichen Fehler noch aufweist — behebt ein künftiges Bibliotheks-Update den Fehler selbst, schlägt der Test fehl und der Patch wird neu bewertet (statt still doppelt zu wirken).
+* **Bewusst zurückgestellt:** Zwei weitere dokumentierte Bibliotheks-Fehler (A5-04-03-Encode-Offset, A5-10-03-Zieltemperatur-Offset) verändern an echte Hardware **gesendete** Telegramme bzw. die Climate-Anzeige und werden erst in der Hardware-Test-Session gepatcht — ohne Gerät wäre die Korrektheit nicht verifizierbar.
+* Tests: 7 neue Tests (`test_eltakobus_patches.py`); Suite **242 grün**. Adversarial reviewt.
+
 ## Version 2.9.0 — Roadmap-Welle B (B4): Diagnose-Download + Reparatur-Hinweise
 * **Diagnose-Download (`diagnostics`):** Über *Einstellungen → Geräte & Dienste → Eltako → ⋮ → Diagnose herunterladen* gibt es jetzt einen strukturierten Zustandsbericht (Gateway-Typ, Base-ID, Verbindungsstatus, Empfangszähler, Konfiguration). Erleichtert Fehlermeldungen erheblich. Der Gateway-Host (serieller Pfad / LAN-Adresse) wird **geschwärzt**, damit man den Bericht bedenkenlos teilen kann.
 * **Reparatur-Hinweis bei fehlender Base-ID (AG1):** ESP2-Gateways außer dem FAM14 (FGW14-USB, FAM-USB, LAN-ESP2) fragen ihre Base-ID nicht selbst ab. Blieb sie auf `00-00-00-00`, wurden **alle** empfangenen Telegramme kommentarlos verworfen (der Empfangszähler stieg trotzdem) — ein extrem verwirrender „nichts geht"-Zustand. Home Assistant zeigt jetzt einen **Reparatur-Hinweis** im Reparatur-Center, der klar sagt, dass eine gültige `base_id` konfiguriert werden muss. Der Hinweis verschwindet automatisch, sobald das behoben ist.
