@@ -86,6 +86,20 @@ class TestDimmableLight(unittest.TestCase):
 
 
 
+    def test_value_changed_ignores_other_rorg(self):
+        """M4: a telegram with org other than 0x05/0x07 (here 1BS=0x06) must be
+        ignored, not crash with UnboundLocalError on `decoded`."""
+        light = self.create_switchable_light()
+        light._attr_is_on = True
+        light._attr_brightness = 200
+
+        one_bs_msg = Regular1BSMessage(address=b'\x00\x00\x00\x01', status=b'\x00', data=b'\x00')
+        light.value_changed(one_bs_msg)     # previously raised UnboundLocalError
+
+        # state must be untouched by the ignored telegram
+        self.assertTrue(light._attr_is_on)
+        self.assertEqual(light._attr_brightness, 200)
+
     def test_switchable_light_trun_on(self):
         light = self.create_switchable_light()
         light.send_message = self.mock_send_message

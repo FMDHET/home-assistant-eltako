@@ -70,7 +70,8 @@ class EltakoEntity(Entity):
             },
             name=self.dev_name,
             manufacturer=MANUFACTURER,
-            model=self.dev_eep.eep_string,
+            # M13: dev_eep can be None (e.g. gateway-owned diagnostic entities) -> AttributeError
+            model=self.dev_eep.eep_string if self.dev_eep else None,
             via_device=(DOMAIN, self.gateway.serial_path),
         )
     

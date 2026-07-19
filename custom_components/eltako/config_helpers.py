@@ -1,3 +1,5 @@
+import re
+
 from homeassistant.helpers.reload import async_integration_yaml_config
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
@@ -115,13 +117,10 @@ async def async_get_home_assistant_config(hass: HomeAssistant, CONFIG_SCHEMA: di
         return _conf[DOMAIN]
     
 def get_device_config(config: dict, id: int) -> dict:
-    gateways = config[CONF_GATEWAY]
-    for g in gateways:
-        if g[CONF_ID] == id:
-            if CONF_DEVICES in g:
-                return g[CONF_DEVICES]
-            else:
-                return {}
+    # M9: tolerate a config without any gateway section instead of KeyError
+    for g in config.get(CONF_GATEWAY, []):
+        if g.get(CONF_ID) == id:
+            return g.get(CONF_DEVICES, {})
     return {}
 
 async def async_get_list_of_gateway_descriptions(hass: HomeAssistant, CONFIG_SCHEMA: dict, get_integration_config=async_integration_yaml_config, filter_out: list[str]=[]) -> dict:
@@ -174,8 +173,19 @@ def get_device_name(dev_name: str, dev_id: AddressExpression, general_config: di
     else:
         return dev_name
     
-def get_id_from_gateway_name(dev_name: str) -> AddressExpression:
-    return int(dev_name.split('(Id: ')[1].split(')')[0])
+def get_id_from_gateway_name(dev_name: str) -> int | None:
+    """Extract the numeric gateway id from a name like 'GW1 - fam-usb (Id: 2)'.
+
+    M9: previously `int(dev_name.split('(Id: ')[1].split(')')[0])` raised
+    IndexError for names without the marker and ValueError for non-integer
+    ids. Return None instead so callers can handle a malformed name.
+    """
+    if dev_name is None:
+        return None
+    match = re.search(r'\(Id:\s*(\d+)\)', dev_name)
+    if match is None:
+        return None
+    return int(match.group(1))
     
 
 def get_identifier(gateway_id: int, dev_id: AddressExpression | bytes, event_id:str=None, description_key:str=None) -> str:

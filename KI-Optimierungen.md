@@ -103,19 +103,19 @@ Legende: ☐ offen · ☑ erledigt · Aufwand: S (klein, <30 min) / M (mittel) /
 
 ### P2 — MITTEL (latente Crashes, Kompatibilität, falsche Zustände)
 
-- ☐ **M1 — Zuweisung an Property `native_value` statt `_attr_native_value`** — [sensor.py:901/948/985/1077](custom_components/eltako/sensor.py#L901); Fehler wird teils per `except AttributeError: pass` **stumm verschluckt** → Gateway-Sensoren bleiben leer. Konsequent `_attr_native_value` verwenden. · S
+- ☑ **M1 — Zuweisung an Property `native_value` statt `_attr_native_value`** — konsequent `_attr_native_value`. · S *(mit H7/Phase 3 erledigt)*
 - ☑ **M2 — `ClimateEntityFeature.TURN_ON/TURN_OFF` fehlen** — Features + `async_turn_on/off` ergänzt. Review-Fix F1: `async_turn_off` sendet OFF direkt (nicht über die Toggle-Logik, die ein OFF-Gerät sonst wieder eingeschaltet hätte). · S
 - ☑ **M3 — `kwargs['temperature']` → `KeyError`** — [climate.py:265](custom_components/eltako/climate.py#L265); `kwargs.get(ATTR_TEMPERATURE)` mit None-Guard. · S *(mit K5 erledigt)*
-- ☐ **M4 — `UnboundLocalError` für Telegramme mit org ≠ 0x05/0x07 (Dimmer)** — [light.py:175-187](custom_components/eltako/light.py#L175-L187); `decoded` nur bei 0x07 zugewiesen. `else: return` ergänzen. · S
+- ☑ **M4 — `UnboundLocalError` für Telegramme mit org ≠ 0x05/0x07 (Dimmer)** — `else: return` ergänzt. Regressionstest (1BS/org 0x06) in `test_dimmable_light.py`. · S *(Phase 6, 2026-07-19)*
 - ☑ **M5 — Zuweisung an Property `hvac_modes` beim Restore** — Modi-Restore entfernt (werden im `__init__` gesetzt), widersprüchliche hvac_mode-Logik bereinigt. · S
 - ☑ **M6 — `raise Exception` mitten im Message-Callback** — [binary_sensor.py:337](custom_components/eltako/binary_sensor.py#L337) (A5-30-03, unbekannter description_key); loggen + `return`. · S *(mit K4 erledigt)*
-- ☐ **M7 — Non-frozen Dataclass-Subklasse von `SensorEntityDescription`** — [sensor.py:82-84](custom_components/eltako/sensor.py#L82-L84); läuft nur noch über HA-Übergangs-Metaclass, künftig `TypeError` **beim Modul-Import** (ganze Sensor-Plattform). `@dataclass(frozen=True, kw_only=True)`. · S
-- ☐ **M8 — `event.data['pressed_buttons']` ohne Guard** — [sensor.py:391-393](custom_components/eltako/sensor.py#L391-L393); fremde/manuell gefeuerte Events → `KeyError`. `.get(..., [])`. · S
-- ☐ **M9 — `get_id_from_gateway_name` crasht bei abweichenden Namen** — [config_helpers.py:177-178](custom_components/eltako/config_helpers.py#L177-L178) (`IndexError`/`ValueError`, z. B. Float-Id `1.0`); plus harte Key-Zugriffe [config_helpers.py:87/98/117-125](custom_components/eltako/config_helpers.py#L117-L125) (`KeyError` statt Fehlermeldung). Regex-Parsing mit `None`-Rückgabe; `.get(...)` mit Defaults. · M
-- ☐ **M10 — Config Flow: `TypeError` bei `None`-Gateway-Config + Substring-Matching** — [config_flow.py:99-104](custom_components/eltako/config_flow.py#L99-L104), [config_flow.py:144-151](custom_components/eltako/config_flow.py#L144-L151) (`'lan' in name` matcht z. B. „Planung"); None-Guard, Gerätetyp aus YAML per Id ermitteln. · M
+- ☑ **M7 — Non-frozen Dataclass-Subklasse von `SensorEntityDescription`** — `@dataclass(frozen=True, kw_only=True)` gesetzt; Regressionstest in `test_phase6_robustness.py`. · S *(Phase 6, 2026-07-19)*
+- ☑ **M8 — `event.data['pressed_buttons']` ohne Guard** — `.get('pressed_buttons', [])`. · S *(Phase 6, 2026-07-19)*
+- ☑ **M9 — `get_id_from_gateway_name` crasht bei abweichenden Namen** — Regex-Parsing mit `None`-Rückgabe (Aufrufer in init prüft auf None → ConfigEntryError); `get_device_config` per `.get(...)` gehärtet. Regressionstests in `test_phase6_robustness.py`. · M *(Phase 6, 2026-07-19)*
+- ☑ **M10 — Config Flow: `TypeError` bei `None`-Gateway-Config + Substring-Matching** — None-Guard bei `find_gateway_config_by_id`; `validate_eltako_conf` ermittelt den Gerätetyp jetzt aus der YAML per Gateway-Id statt per Substring (`'lan' in 'Planung'`), inkl. Fix der zwei fehlerhaften Debug-Logs. Review-Nachtrag: `BAUD_RATE_DEVICE_TYPE_MAPPING`-Lookup per `.get()` gehärtet (unmapped `ftd14` → saubere Meldung statt `KeyError`, auch in `async_setup_entry`). · M *(Phase 6, 2026-07-19)*
 - ☑ **M11 — VNG: `service_info`-`UnboundLocalError`, `zeroconf=None`-Pfad** — Variablen vorinitialisieren, Unregister nur nach erfolgreicher Registrierung. · S *(mit H8 erledigt, 2026-07-18)*
-- ☐ **M12 — `datetime.py`: tote Plattform mit garantierten Crashes** — [datetime.py:54/64/84-88](custom_components/eltako/datetime.py#L54): Handler-Registrierung vor `super().__init__`, `datetime.strptime` auf Modul, sync `set_value` an `hass.create_task` übergeben. Datei entfernen oder korrigieren, bevor jemand die Plattform aktiviert. · S
-- ☐ **M13 — `device_info.model` crasht bei `dev_eep=None`** — [device.py:64-75](custom_components/eltako/device.py#L64-L75); Guard: `self.dev_eep.eep_string if self.dev_eep else None`. · S
+- ☑ **M12 — `datetime.py`: tote Plattform mit garantierten Crashes** — Datei entfernt (nie in `PLATFORMS`, mehrere sichere Crashes; Funktion existiert bereits als `GatewayLastReceivedMessage` in `sensor.py`). · S *(Phase 6, 2026-07-19)*
+- ☑ **M13 — `device_info.model` crasht bei `dev_eep=None`** — Guard `self.dev_eep.eep_string if self.dev_eep else None`. · S *(Phase 6, 2026-07-19)*
 - ☐ **M14 — Climate: toter Periodik-Task (auskommentiert)** — [climate.py:159-160/200-218](custom_components/eltako/climate.py#L159-L218); bei Reaktivierung Task-Leak/Race. Sauber implementieren (`entry.async_create_background_task` + Cancel) oder Code entfernen. · M
 
 ### P3 — NIEDRIG (Korrektheit, Hygiene, Zukunftssicherheit)
@@ -209,8 +209,11 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 - **Fix:** `reconnection_timeout` (Default **15 s**) und `tcp_keep_alive_timeout` (Default **30 s**) werden übergeben und sind pro Gateway per YAML konfigurierbar (`reconnection_timeout:` / `tcp_keep_alive_timeout:`).
 - ~~**Offen/Upstream:** `esp2_gateway_adapter` 0.2.15 behandelt `recv()==b''` (Gegenstelle schließt sauber) als „Nachricht" statt als Disconnect → theoretische Endlosschleife ohne Reconnect.~~ **ERLEDIGT 2026-07-18 (v2.1.2):** Live am Gateway (192.168.177.15:2325, TCM515) reproduziert — Gateway schließt bei zweitem Client sauber (FIN), Symptom „nur HA-Neustart hilft" bestätigt. Prüfung ergab: Bug ist **auch in 0.2.21 noch vorhanden** (per Test gegen die ungepatchte Klasse verifiziert, `run()` unverändert). Fix in der Integration: `tcp2serial_hardened.py` (`HardenedTCP2SerialCommunicator`) — `recv()==b''` → `ConnectionResetError` → Reconnect-Pfad der Lib; zusätzlich Kernel-TCP-Keepalive (`SO_KEEPALIVE`). Lib auf **0.2.21** gebumpt (Daemon-Thread, ACK-Handling). Regressionstest: `tests/test_tcp_connection_hardening.py`. **Achtung:** `run()` ist eine gepatchte Kopie aus 0.2.21 → bei jedem künftigen Lib-Bump gegen Upstream-`run()` abgleichen. Upstream-Meldung an grimmpp/esp2_gateway_adapter weiterhin sinnvoll.
 
-### ☐ Phase 6 — Mittlere Priorität abarbeiten (M1, M4, M6–M10, M12, M13)
-- Reihenfolge nach Gelegenheit; M7 (frozen dataclass) **vor dem nächsten großen HA-Upgrade**
+### ☑ Phase 6 — Mittlere Priorität abarbeiten (M4, M7–M10, M12, M13) — **ERLEDIGT 2026-07-19 (v2.1.4)**
+- M1/M3/M6 waren bereits in früheren Phasen erledigt; M11 mit H8 (Phase 4). M14 bleibt offen (Hardware nötig).
+- Umgesetzt: M4 (light org-Guard), M7 (frozen dataclass), M8 (event.data.get), M9 (Gateway-Id-Regex + get_device_config), M10 (Gerätetyp aus YAML statt Substring + Baud-Guard), M12 (tote datetime.py entfernt), M13 (model-None-Guard).
+- Adversarial reviewt (3 Winkel): Kernänderungen bestätigt; 1 latenter `KeyError` (unmapped `ftd14`) in den angefassten Funktionen gehärtet. 6 neue Regressionstests. **152 Tests grün.**
+- **Offen M14** — Climate: toter Periodik-Task (auskommentiert), Reaktivierung nur mit Hardware sinnvoll.
 
 ### ☐ Phase 7 — Aufräumen & Zukunftssicherheit (N1–N10)
 - Korrektheits-Fixes zuerst (N1!), dann Hygiene/toter Code
@@ -263,3 +266,5 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 | 2026-07-18 | Produktentscheidung Rocker: 2 Events reaktiviert → Suite erstmals komplett grün (139) | für Release v2.1.3 |
 | 2026-07-18 | Phase 4: H8 a–d + M11 auf Branch `stability-fixes-phase4`; 6 neue VNG-Funktionstests | 145 Tests grün |
 | 2026-07-18 | Phase 4 adversarial reviewt (8 Winkel, 1-Vote-Verify): 4 CONFIRMED eingearbeitet (Generation-Token, Lifecycle-Lock, sortierte Chord-IDs, Serialize-Härtung), 4 REFUTED | **146 Tests, 0 F** |
+| 2026-07-19 | Phase 6: M4, M7–M10, M12, M13 auf Branch `stability-fixes-phase6`; datetime.py entfernt; 6 neue Regressionstests | 152 Tests grün |
+| 2026-07-19 | Phase 6 adversarial reviewt (3 Winkel): Kernänderungen bestätigt, `ftd14`-KeyError gehärtet (config_flow + init) | **152 Tests, 0 F**, Release v2.1.4 |

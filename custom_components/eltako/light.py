@@ -182,6 +182,11 @@ class EltakoDimmableLight(AbstractLightEntity):
             elif msg.org == 0x05:
                 LOGGER.debug("[Dimmable Light] Ignore on/off message with org=0x05")
                 return
+            else:
+                # M4: without this branch `decoded` stays unassigned for other RORGs
+                # (e.g. 0x06) -> UnboundLocalError below
+                LOGGER.debug("[Dimmable Light] Ignore message with org=%s", msg.org)
+                return
 
         except Exception as e:
             LOGGER.warning("[Dimmable Light] Could not decode message: %s %s", type(e), str(e))
