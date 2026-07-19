@@ -932,23 +932,31 @@ class EltakoAirQualitySensor(EltakoSensor):
         if _dev_name == "":
             _dev_name = DEFAULT_DEVICE_NAME_THERMOMETER
 
-        self.voc_type_name = voc_type.name_en
-        if language == LANGUAGE_ABBREVIATION.LANG_GERMAN:
-            self.voc_type_name = voc_type.name_de
+        # AS3: the unique_id must be language-INDEPENDENT - the localized substance name
+        # in the id orphaned the entity (and its statistics) on a HA language switch.
+        # Key off the English name (stable, and byte-identical to what English installs
+        # already have -> no migration for them); keep the DISPLAY name localized.
+        stable_key_name = voc_type.name_en
+        self.voc_type_name = voc_type.name_de if language == LANGUAGE_ABBREVIATION.LANG_GERMAN else voc_type.name_en
+
+        # AS2: derive the device_class from the substance's unit. Only the VOC *total*
+        # carries a unit (ppb); the individual substances report a unitless index, for
+        # which HA rejects a VOC device_class (wrong-unit long-term-statistics error).
+        # ppb pairs with VOLATILE_ORGANIC_COMPOUNDS_PARTS (NOT ...COMPOUNDS = µg/m³).
+        unit = voc_type.unit or None
+        device_class = SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS_PARTS if unit else None
 
         description = EltakoSensorEntityDescription(
-            key = "air_quality_sensor_"+self.voc_type_name,
-            device_class = SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS,
-            # device_class=SensorDeviceClass.AQI,
+            key = "air_quality_sensor_" + stable_key_name,
+            device_class = device_class,
             name = self.voc_type_name,
-            native_unit_of_measurement = voc_type.unit,
+            native_unit_of_measurement = unit,
             icon="mdi:air-filter",
             state_class=SensorStateClass.MEASUREMENT,
         )
 
         super().__init__(platform, gateway, dev_id, _dev_name, dev_eep, description)
         self.voc_type = voc_type
-        # self._attr_suggested_unit_of_measurement = voc_type.unit
 
         LOGGER.debug(f"entity_description: {self.entity_description}, voc_type: {voc_type}")
     

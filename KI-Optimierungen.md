@@ -263,8 +263,8 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 
 ### Sensor (unique_id-Änderungen = Registry-Migration nötig)
 - ☑ **AS1 ⚡** — Tarif fehlt in der unique_id → Multi-Tarif-Zähler (`meter_tariffs: [1,2]`) erzeugen Kollisionen, Tarif ≥2 fehlt still. **ERLEDIGT v2.7.0** (B3): Tarif ist jetzt Teil der unique_id; erster Tarif behält die schlichte id (Bestandsschutz, keine Migration), Zusatz-Tarife bekommen `_tariff_<wert>`.
-- ☐ **AS2** — VOC: `VOLATILE_ORGANIC_COMPOUNDS` (µg/m³) mit Einheit ppb → Statistik-Ablehnung; korrekt wäre `VOLATILE_ORGANIC_COMPOUNDS_PARTS`; Nicht-Total-Substanzen haben Einheit `''`.
-- ☐ **AS3** — Lokalisierter Substanzname in der unique_id → Sprachwechsel verwaist Entities/Statistiken.
+- ☑ **AS2** — VOC: `VOLATILE_ORGANIC_COMPOUNDS` (µg/m³) mit Einheit ppb → Statistik-Ablehnung; korrekt wäre `VOLATILE_ORGANIC_COMPOUNDS_PARTS`; Nicht-Total-Substanzen haben Einheit `''`. **ERLEDIGT v2.8.0** (B3): device_class aus Einheit abgeleitet (Total→`_PARTS`+ppb, Substanzen→kein device_class/unit).
+- ☑ **AS3** — Lokalisierter Substanzname in der unique_id → Sprachwechsel verwaist Entities/Statistiken. **ERLEDIGT v2.8.0** (B3): sprachunabhängiger Key (name_en), lokalisierter Anzeigename; erste Entity-Registry-Migration (1.2→1.3) mit Mehrdeutigkeits-Ausschluss (Upstream-„Styren"-Bug) + Kollisions-Guard.
 - ☐ **AS4** (Upstream eltakobus) — A5-10-03-Decode: `target_temp` ohne `+8`-Offset → Zieltemperatur 8 K zu niedrig und gestaucht (Encode symmetrisch falsch → Tests round-trippen grün).
 - ☐ **AS5** — A5-07-01-PIR-Sensor publiziert Roh-Byte (0–255) als einheitslosen MEASUREMENT statt ≥128-Semantik (Designentscheidung).
 

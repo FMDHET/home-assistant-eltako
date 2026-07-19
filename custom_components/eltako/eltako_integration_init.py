@@ -7,6 +7,9 @@ from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+
+from eltakobus.eep import VOC_SubstancesType
 
 
 from .const import *
@@ -111,21 +114,80 @@ def get_device_config_for_gateway(hass: HomeAssistant, config_entry: ConfigEntry
     return config_helpers.get_device_config(hass.data[DATA_ELTAKO][ELTAKO_CONFIG], gateway.dev_id)
 
 
+def _voc_localized_to_stable_key() -> dict[str, str]:
+    """AS3: map a normalized localized VOC substance name -> the stable (name_en based)
+    unique_id fragment, for migrating entities created under a different HA language.
+
+    AMBIGUOUS localized names are EXCLUDED: an upstream eltakobus data bug gives two
+    substances the same German name ('Styren' -> Styrene AND Hexane), so that name
+    cannot be reverse-mapped to one substance and is left un-migrated rather than
+    remapped to the wrong one."""
+    def _norm(s: str) -> str:
+        return s.replace(' ', '_').replace('-', '_').lower()
+
+    stable_by_name: dict[str, str] = {}
+    indices_by_name: dict[str, set] = {}
+    for t in VOC_SubstancesType:
+        stable = _norm(t.name_en)
+        for localized in (t.name_en, t.name_de):
+            n = _norm(localized)
+            indices_by_name.setdefault(n, set()).add(t.index)
+            stable_by_name[n] = stable
+    return {n: stable_by_name[n] for n, idxs in indices_by_name.items() if len(idxs) == 1}
+
+
+async def _async_migrate_voc_unique_ids(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+    """AS3 (config-entry 1.2 -> 1.3): remap VOC air-quality entities whose unique_id
+    embeds a LOCALIZED substance name to the language-independent (name_en based) id,
+    via the entity registry so history/customizations are preserved. English installs
+    already use that id (no-op); only other-language installs are remapped."""
+    ent_reg = er.async_get(hass)
+    marker = "air_quality_sensor_"
+    loc_to_stable = _voc_localized_to_stable_key()
+
+    def _migrator(entity: er.RegistryEntry) -> dict | None:
+        uid = entity.unique_id
+        if marker not in uid:
+            return None
+        prefix, _, localized = uid.rpartition(marker)
+        stable = loc_to_stable.get(localized)
+        # None => unknown/ambiguous; equal => already stable (e.g. English install)
+        if stable is None or stable == localized:
+            return None
+        new_uid = f"{prefix}{marker}{stable}"
+        # Collision guard: a user who switched language may already have the stable
+        # entity in the registry. HA's async_migrate_entries does NOT catch the
+        # "unique id already in use" error async_update_entity raises, so a naive
+        # remap would abort the whole migration (setup fails). Skip instead.
+        if ent_reg.async_get_entity_id(entity.domain, entity.platform, new_uid):
+            LOGGER.warning("[%s] VOC entity %s -> %s skipped: target unique_id already exists.",
+                           LOG_PREFIX_INIT, uid, new_uid)
+            return None
+        LOGGER.info("[%s] Migrating VOC entity unique_id %s -> %s.", LOG_PREFIX_INIT, uid, new_uid)
+        return {"new_unique_id": new_uid}
+
+    await er.async_migrate_entries(hass, config_entry.entry_id, _migrator)
+
+
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate a config entry to the current (VERSION, MINOR_VERSION). (B2)
 
     Foundation for all config-entry / registry migrations. Home Assistant calls this
-    only when the stored version is behind the config flow's (VERSION=1,
-    MINOR_VERSION=2); a stored MAJOR version newer than ours is already rejected by HA
-    before we are called (guarded again below so a future major bump fails loudly).
+    only when the stored version is behind the config flow's VERSION/MINOR_VERSION
+    (see config_flow.py); a stored MAJOR version newer than ours is already rejected
+    by HA before we are called (guarded again below so a future major bump fails loudly).
 
-    Steps (each idempotent, applied in ascending order):
+    Steps (each idempotent, applied in ascending order; a legacy entry runs all steps
+    below its version in one call):
       1.1 -> 1.2  Backfill the config-entry unique_id (`eltako_gateway_<id>`) for
                   entries created before v2.4.0 (AF1), so the duplicate-gateway guard
                   also protects installs that predate it.
+      1.2 -> 1.3  Remap VOC air-quality entity unique_ids from the localized substance
+                  name to the language-independent (name_en based) id (AS3), via the
+                  entity registry so history is preserved.
 
-    Later entity-registry unique_id migrations (AS1/AM3/AS2/AS3, B3) will be added as
-    further minor-version steps here, using homeassistant.helpers.entity_registry.
+    Further entity-registry unique_id migrations (e.g. AM3, B3) will be added as
+    additional minor-version steps here, using homeassistant.helpers.entity_registry.
     """
     LOGGER.debug("[%s] Migrating config entry '%s' from version %s.%s.",
                  LOG_PREFIX_INIT, config_entry.title, config_entry.version, config_entry.minor_version)
@@ -162,6 +224,13 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         hass.config_entries.async_update_entry(config_entry, unique_id=new_unique_id, minor_version=2)
         LOGGER.info("[%s] Migrated config entry '%s' to version 1.2 (unique_id=%s).",
                     LOG_PREFIX_INIT, config_entry.title, new_unique_id)
+
+    # --- 1.2 -> 1.3 : VOC air-quality entity unique_ids (AS3, first entity-registry migration) ---
+    if config_entry.minor_version < 3:
+        await _async_migrate_voc_unique_ids(hass, config_entry)
+        hass.config_entries.async_update_entry(config_entry, minor_version=3)
+        LOGGER.info("[%s] Migrated config entry '%s' to version 1.3 (VOC unique_ids).",
+                    LOG_PREFIX_INIT, config_entry.title)
 
     return True
 
