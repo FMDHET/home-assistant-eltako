@@ -8,6 +8,7 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 
 from eltakobus.eep import VOC_SubstancesType
 
@@ -87,12 +88,50 @@ def set_gateway_to_hass(hass: HomeAssistant, gateway: EnOceanGateway) -> None:
     g_id = "gateway_"+str(gateway.dev_id)
     hass.data[DATA_ELTAKO][g_id] = gateway
 
+
+def _update_base_id_repair(hass: HomeAssistant, gateway: EnOceanGateway) -> None:
+    """B4 / AG1: surface the silent "no base id -> all telegrams dropped" failure.
+
+    ESP2 gateways other than the FAM14 never auto-query their base id (see
+    EnOceanGateway.query_for_base_id_and_version). If such a gateway is left at the
+    schema default 00-00-00-00, the receive path's `int(base_id) != 0` gate silently
+    discards EVERY telegram while the message counter keeps climbing - previously
+    invisible to the user. Raise a repair issue instead; clear it once a valid base id
+    is configured (checked again on each reload)."""
+    issue_id = f"missing_base_id_{gateway.dev_id}"
+    # The Virtual Network Gateway forwards OTHER gateways' telegrams to TCP clients; it
+    # hardcodes base_id 00-00-00-00, never runs the serial receive gate, and cannot be
+    # reconfigured - so the silent-drop condition does NOT apply to it (would otherwise
+    # be a permanent, unfixable false-positive warning).
+    is_virtual = gateway.dev_type == GatewayDeviceType.VirtualNetworkAdapter
+    queries_base_id = (not GatewayDeviceType.is_esp2_gateway(gateway.dev_type)
+                       or gateway.dev_type == GatewayDeviceType.GatewayEltakoFAM14)
+    base_id_missing = int.from_bytes(gateway.base_id[0]) == 0
+
+    if base_id_missing and not queries_base_id and not is_virtual:
+        LOGGER.warning("[%s] Gateway '%s' (%s) has no base id (00-00-00-00) and does not query one - "
+                       "ALL received telegrams are being ignored. Configure a valid 'base_id'.",
+                       LOG_PREFIX_INIT, gateway.dev_name, gateway.dev_type.value)
+        ir.async_create_issue(
+            hass, DOMAIN, issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="missing_base_id",
+            translation_placeholders={"gateway": gateway.dev_name, "gateway_type": gateway.dev_type.value},
+        )
+    else:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+
 async def async_unload_gateway(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
 
     gateway:EnOceanGateway = get_gateway_from_hass(hass, config_entry)
     if gateway is not None:
 
         LOGGER.info(f"[{LOG_PREFIX_INIT}] Unload {gateway.dev_name} and all its supported devices!")
+
+        # B4/AG1: clear the base-id repair issue on unload so it does not linger after
+        # the gateway is removed; a reload re-evaluates it in async_setup_entry.
+        ir.async_delete_issue(hass, DOMAIN, f"missing_base_id_{gateway.dev_id}")
 
         # K3: remove the send-message service registered for this gateway
         service_name = config_helpers.get_bus_event_type(gateway_id=gateway.dev_id, function_id=SIGNAL_SEND_MESSAGE_SERVICE)
@@ -323,6 +362,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         raise ConfigEntryNotReady(f"[{LOG_PREFIX_INIT}] Could not start gateway (id: {gateway_id}, serial path: {gateway_serial_path}): {e}") from e
 
     set_gateway_to_hass(hass, gateway)
+
+    # B4/AG1: raise (or clear) a repair issue if this gateway type can never obtain a
+    # base id and none is configured, so the silent telegram-dropping is visible.
+    _update_base_id_repair(hass, gateway)
 
     try:
         await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
