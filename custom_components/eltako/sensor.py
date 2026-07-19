@@ -28,6 +28,7 @@ from homeassistant.const import (
     PERCENTAGE,
     CONF_LANGUAGE,
     UnitOfElectricPotential,
+    EntityCategory,
 )
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
@@ -228,6 +229,29 @@ SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_EAST = EltakoSensorEntityDescription(
     suggested_display_precision=0,
 )
 
+# A5: A5-06-01 exposes twilight (raw 0-255) + day_light (lux) separately in addition
+# to the combined illumination value (the library already decodes all three).
+SENSOR_TYPE_TWILIGHT = "twilight"
+SENSOR_TYPE_DAYLIGHT = "daylight"
+
+SENSOR_DESC_TWILIGHT = EltakoSensorEntityDescription(
+    key=SENSOR_TYPE_TWILIGHT,
+    name="Twilight",
+    icon="mdi:weather-sunset",
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=0,
+)
+
+SENSOR_DESC_DAYLIGHT = EltakoSensorEntityDescription(
+    key=SENSOR_TYPE_DAYLIGHT,
+    name="Daylight",
+    native_unit_of_measurement=LIGHT_LUX,
+    icon="mdi:weather-sunny",
+    device_class=SensorDeviceClass.ILLUMINANCE,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=0,
+)
+
 SENSOR_DESC_ILLUMINATION = EltakoSensorEntityDescription(
     key=SENSOR_TYPE_ILLUMINANCE,
     name="Illuminance",
@@ -384,10 +408,10 @@ async def async_setup_entry(
                     # _pir_status => as binary sensor
 
                 elif dev_conf.eep in [A5_06_01]:
+                    # A5: illumination (combined) + twilight + daylight as separate sensors
                     entities.append(EltakoIlluminationSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep))
-                    #TODO: add twilight
-                    #TODO: add daylight
-                    # both are currently combined in illumination
+                    entities.append(EltakoTwilightSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep))
+                    entities.append(EltakoDaylightSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep))
 
                 apply_area_to_entities(entities, _area_start, dev_conf)   # F1
 
@@ -764,8 +788,43 @@ class EltakoIlluminationSensor(EltakoSensor):
         self.schedule_update_ha_state()
 
 
+class EltakoTwilightSensor(EltakoSensor):
+    """A5-06-01 twilight value (raw 0-255)."""
+
+    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, description: EltakoSensorEntityDescription=SENSOR_DESC_TWILIGHT) -> None:
+        _dev_name = dev_name or DEFAULT_DEVICE_NAME_THERMOMETER
+        super().__init__(platform, gateway, dev_id, _dev_name, dev_eep, description)
+
+    def value_changed(self, msg: ESP2Message):
+        try:
+            decoded = self.dev_eep.decode_message(msg)
+        except Exception as e:
+            LOGGER.warning("[Twilight Sensor %s] Could not decode message: %s", self.dev_id, str(e))
+            return
+        self._attr_native_value = decoded.twilight
+        self.schedule_update_ha_state()
+
+
+class EltakoDaylightSensor(EltakoSensor):
+    """A5-06-01 daylight illuminance (lux)."""
+
+    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, description: EltakoSensorEntityDescription=SENSOR_DESC_DAYLIGHT) -> None:
+        _dev_name = dev_name or DEFAULT_DEVICE_NAME_THERMOMETER
+        super().__init__(platform, gateway, dev_id, _dev_name, dev_eep, description)
+
+    def value_changed(self, msg: ESP2Message):
+        try:
+            decoded = self.dev_eep.decode_message(msg)
+        except Exception as e:
+            LOGGER.warning("[Daylight Sensor %s] Could not decode message: %s", self.dev_id, str(e))
+            return
+        self._attr_native_value = decoded.day_light
+        self.schedule_update_ha_state()
+
+
 class EltakoBatteryVoltageSensor(EltakoSensor):
     """Representation of an Eltako battery sensor."""
+    _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3
 
     def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, description: EltakoSensorEntityDescription=SENSOR_DESC_BATTERY_VOLTAGE) -> None:
         """Initialize the Eltako temperature sensor."""
@@ -897,6 +956,7 @@ class EltakoAirQualitySensor(EltakoSensor):
 
 class GatewayLastReceivedMessage(EltakoSensor):
     """Protocols last time when message received"""
+    _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3
 
     def __init__(self, platform: str, gateway: EnOceanGateway):
         super().__init__(platform, gateway,
@@ -947,6 +1007,7 @@ class GatewayLastReceivedMessage(EltakoSensor):
 
 class GatewayReceivedMessagesInActiveSession(EltakoSensor):
     """Protocols amount of messages per session"""
+    _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3
 
     def __init__(self, platform: str, gateway: EnOceanGateway):
         super().__init__(platform, gateway,
@@ -1000,6 +1061,7 @@ class GatewayReceivedMessagesInActiveSession(EltakoSensor):
 
 class GatewayBaseId(EltakoSensor):
     """"Displays base id of gateway."""
+    _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3
 
     def __init__(self, platform: str, gateway: EnOceanGateway):
         super().__init__(platform, gateway,
@@ -1044,6 +1106,7 @@ class GatewayBaseId(EltakoSensor):
 
 class StaticInfoField(EltakoSensor):
     """Key value fields for gateway information"""
+    _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3 (also covers GatewayInfoField)
 
     def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, key:str, value:str, icon:str=None):
         super().__init__(platform, gateway,
@@ -1106,6 +1169,7 @@ class GatewayInfoField(StaticInfoField):
         
 class EventListenerInfoField(EltakoSensor):
     """Key value fields for gateway information"""
+    _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3
 
     def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, event_id: str, key:str, convert_event_function, icon:str=None):
         super().__init__(platform, gateway,

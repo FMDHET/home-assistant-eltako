@@ -412,3 +412,4 @@ Ergebnis in **`ANALYSE-UND-ROADMAP.md`** (eigene Datei): Messungen (Coverage 53 
 | 2026-07-19 | **V1.3a**: F1 (area, non-destruktiv) + F9 (temp_unit optional) + Doku-Fix nach main portiert; 6 neue Tests | 169 Tests grün, **Release v2.3.0** |
 | 2026-07-19 | **V2**: Komplettanalyse → `ANALYSE-UND-ROADMAP.md` (Coverage 53%, ruff, 5 Agenten, 5-Wellen-Roadmap) | Analyse-Deliverable |
 | 2026-07-19 | **Roadmap-Welle A** (Start): ruff-Cleanup (31+6 Funde), Doku-Fixes (D4 switch_button ⚡, D1/D2/D3) | 171 Tests grün, ruff F-clean, **Release v2.3.1** |
+| 2026-07-19 | **Roadmap-Welle A** (Rest): A3 entity_category, A4 config-entry unique_id/AF1, A5 A5-06-01 twilight/daylight-Sensoren + toter Konstante, A6 Harness + 15 P0-Tests | Coverage 53%→58% (button/config_flow/select 0%→60-67%), **186 grün, Release v2.4.0** |

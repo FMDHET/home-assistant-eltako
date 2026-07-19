@@ -23,7 +23,8 @@
       "no_serial_path_available": "Kein serieller Pfad verfügbar. USB-Stecker neu verbinden."
     },
     "abort": {
-      "no_configuration_available": "Kein Gateway zum Hinzufügen verfügbar. Alle konfigurierten Gateways sind bereits eingerichtet."
+      "no_configuration_available": "Kein Gateway zum Hinzufügen verfügbar. Alle konfigurierten Gateways sind bereits eingerichtet.",
+      "already_configured": "Dieses Gateway ist bereits eingerichtet."
     }
   }
 }

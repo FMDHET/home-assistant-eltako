@@ -23,7 +23,8 @@
       "no_serial_path_available": "No serial path available. Try to reconnect your USB plug."
     },
     "abort": {
-      "no_configuration_available": "No gateway available to add. All configured gateways are already set up."
+      "no_configuration_available": "No gateway available to add. All configured gateways are already set up.",
+      "already_configured": "This gateway is already configured."
     }
   }
 }

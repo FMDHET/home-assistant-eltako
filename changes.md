@@ -1,5 +1,11 @@
 # Changes and Feature List
 
+## Version 2.4.0 — Roadmap-Welle A: Lifecycle-Politur, neue Sensoren, mehr Tests
+* **Doppeltes Hinzufügen desselben Gateways verhindert:** Der Config-Entry bekommt jetzt eine eindeutige ID pro Gateway (`_abort_if_unique_id_configured`) — ein Gateway kann nicht mehr versehentlich zweimal eingerichtet werden (behebt AF1).
+* **Diagnose-Entities richtig kategorisiert:** Gateway-Status/-Infos, Base-ID, Zähler, Batteriespannung laufen jetzt als **Diagnose**, die Aktions-Buttons (Reconnect, Speicher auslesen, Teach-In) als **Konfiguration** (`entity_category`). Sie werden dadurch im UI korrekt gruppiert und aus Auto-Dashboards/Sprachassistenten herausgehalten.
+* **Helligkeits-/Dämmerungssensor (A5-06-01):** zusätzlich zum kombinierten Helligkeitswert gibt es jetzt eigene Sensoren für **Dämmerung (twilight)** und **Tageslicht (daylight, lux)**.
+* **Deutlich mehr Testabdeckung:** 15 neue Tests (Priority-Select, Buttons, Stromzähler inkl. 0x8F-Seriennummer-Guard, Config-Flow) — bislang komplett ungetestete Module (Select/Button/Config-Flow: 0 %) sind jetzt abgedeckt. Gesamt-Zeilenabdeckung 53 % → 58 %; Testsuite 186 grün.
+
 ## Version 2.3.1 — Aufräumen & Doku-Korrekturen (Roadmap-Welle A)
 * **Doku-Korrektur (wichtig):** In den Konfigurationsbeispielen war der Kühlmodus-Schlüssel als `switch-button` (Bindestrich) geschrieben — das Schema erwartet `switch_button` (Unterstrich). Wer das Beispiel kopiert hatte, dessen Kühlmodus-Taste wurde **stillschweigend ignoriert**. Korrigiert.
 * Doku aktualisiert: veralteter „nur ESP2"-Hinweis entfernt (ESP3/USB300/MGW-LAN werden unterstützt), Tippfehler `gam14`→`fam14`, veralteter „NEEDS TO BE REVISED"-Vermerk entfernt, neues `area:`-Feld dokumentiert.
