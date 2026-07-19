@@ -355,8 +355,9 @@ async def async_setup_entry(
                     if dev_name == "":
                         dev_name = DEFAULT_DEVICE_NAME_ELECTRICITY_METER
                     
-                    for tariff in dev_conf.get(CONF_METER_TARIFFS, []):
-                        entities.append(EltakoMeterSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_ELECTRICITY_CUMULATIVE, tariff=(tariff - 1)))
+                    for i, tariff in enumerate(dev_conf.get(CONF_METER_TARIFFS, [])):
+                        # AS1: first tariff keeps the plain unique_id (backward compatible), extras get a suffix
+                        entities.append(EltakoMeterSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_ELECTRICITY_CUMULATIVE, tariff=(tariff - 1), tariff_in_id=(i > 0)))
                     _tariff_in_name = dev_conf.get(CONF_METER_TARIFFS, []) != []
                     entities.append(EltakoMeterSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_ELECTRICITY_CURRENT, tariff=0, tariff_in_name=_tariff_in_name))
 
@@ -364,17 +365,19 @@ async def async_setup_entry(
                     if dev_name == "":
                         dev_name = DEFAULT_DEVICE_NAME_GAS_METER
                         
-                    for tariff in dev_conf.get(CONF_METER_TARIFFS, []):
-                        entities.append(EltakoMeterSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_GAS_CUMULATIVE, tariff=(tariff - 1)))
-                        entities.append(EltakoMeterSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_GAS_CURRENT, tariff=(tariff - 1)))
+                    for i, tariff in enumerate(dev_conf.get(CONF_METER_TARIFFS, [])):
+                        # AS1: first tariff keeps the plain unique_id (backward compatible), extras get a suffix
+                        entities.append(EltakoMeterSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_GAS_CUMULATIVE, tariff=(tariff - 1), tariff_in_id=(i > 0)))
+                        entities.append(EltakoMeterSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_GAS_CURRENT, tariff=(tariff - 1), tariff_in_id=(i > 0)))
 
                 elif dev_conf.eep in [A5_12_03]:
                     if dev_name == "":
                         dev_name = DEFAULT_DEVICE_NAME_WATER_METER
                         
-                    for tariff in dev_conf.get(CONF_METER_TARIFFS, []):
-                        entities.append(EltakoMeterSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_WATER_CUMULATIVE, tariff=(tariff - 1)))
-                        entities.append(EltakoMeterSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_WATER_CURRENT, tariff=(tariff - 1)))
+                    for i, tariff in enumerate(dev_conf.get(CONF_METER_TARIFFS, [])):
+                        # AS1: first tariff keeps the plain unique_id (backward compatible), extras get a suffix
+                        entities.append(EltakoMeterSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_WATER_CUMULATIVE, tariff=(tariff - 1), tariff_in_id=(i > 0)))
+                        entities.append(EltakoMeterSensor(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_WATER_CURRENT, tariff=(tariff - 1), tariff_in_id=(i > 0)))
 
                 elif dev_conf.eep in [A5_04_01, A5_04_02, A5_04_03, A5_10_12]:
                     
@@ -484,14 +487,20 @@ async def async_setup_entry(
 class EltakoSensor(EltakoEntity, RestoreEntity, SensorEntity):
     """Representation of an  Eltako sensor device such as a power meter."""
 
-    def __init__(self, platform: str, gateway: EnOceanGateway, 
-                 dev_id: AddressExpression, dev_name: str, dev_eep: EEP, description: EltakoSensorEntityDescription
+    def __init__(self, platform: str, gateway: EnOceanGateway,
+                 dev_id: AddressExpression, dev_name: str, dev_eep: EEP, description: EltakoSensorEntityDescription,
+                 description_key: str = None
     ) -> None:
-        """Initialize the Eltako sensor device."""
+        """Initialize the Eltako sensor device.
+
+        description_key (AS1): overrides the unique_id suffix. Defaults to the
+        entity_description.key; a subclass passes an explicit key when several
+        entities of one device share a description but must have distinct unique_ids
+        (e.g. per-tariff meters)."""
         self.entity_description = description
         self._attr_state_class = description.state_class
-        
-        super().__init__(platform, gateway, dev_id, dev_name, dev_eep)
+
+        super().__init__(platform, gateway, dev_id, dev_name, dev_eep, description_key=description_key)
         self._attr_native_value = None
         
     @property
@@ -591,9 +600,20 @@ class EltakoMeterSensor(EltakoSensor):
     - A5-12-02 (Automated Meter Reading, Gas)
     - A5-12-03 (Automated Meter Reading, Water)
     """
-    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name:str, dev_eep:EEP, description: EltakoSensorEntityDescription, *, tariff, tariff_in_name:bool=True) -> None:
-        """Initialize the Eltako meter sensor device."""
-        super().__init__(platform, gateway, dev_id, dev_name, dev_eep, description)
+    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name:str, dev_eep:EEP, description: EltakoSensorEntityDescription, *, tariff, tariff_in_name:bool=True, tariff_in_id:bool=False) -> None:
+        """Initialize the Eltako meter sensor device.
+
+        AS1: several tariffs of one meter share a description (e.g. 'electricity
+        cumulative'), so without the tariff in the unique_id they collided and every
+        tariff after the first was silently dropped. `tariff_in_id` appends the tariff
+        to the unique_id. It is set for every tariff EXCEPT the first configured one,
+        so the pre-existing entity (always the first tariff) keeps its unique_id and
+        history - no entity-registry migration is needed - while additional tariffs
+        (which never got created before) come up as new entities."""
+        _key = description.key
+        if tariff_in_id:
+            _key = f"{description.key}_tariff_{tariff + 1}"
+        super().__init__(platform, gateway, dev_id, dev_name, dev_eep, description, description_key=_key)
         self._tariff = tariff
         self._tariff_in_name = tariff_in_name
 

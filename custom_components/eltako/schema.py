@@ -188,7 +188,11 @@ class SensorSchema(EltakoPlatformSchema):
                 vol.Optional(CONF_AREA): cv.string,     # F1: assign HA area from YAML
                 vol.Optional(CONF_LANGUAGE, default="en"): vol.In([v for v in LANGUAGE_ABBREVIATION]),
                 vol.Optional(CONF_VOC_TYPE_INDEXES, default=[0]): vol.All(cv.ensure_list, [vol.In([v.index for v in VOC_SubstancesType])]),
-                vol.Optional(CONF_METER_TARIFFS, default=DEFAULT_METER_TARIFFS): vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.Range(min=1, max=16))]),
+                # AS1: drop duplicate tariff values (order-preserving). The per-tariff
+                # unique_id suffix is value-based, so a duplicate like [1,2,2] would
+                # recreate the very collision AS1 fixed. Deduped (not rejected) so a
+                # single typo does not fail the whole meter configuration.
+                vol.Optional(CONF_METER_TARIFFS, default=DEFAULT_METER_TARIFFS): vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.Range(min=1, max=16))], lambda ts: list(dict.fromkeys(ts))),
                 # A-r2: accept BOTH class sets. The value is consumed by the
                 # binary_sensor platform (dual entities created from the sensor:
                 # section, e.g. A5-07-01 occupancy), so binary classes are legit -

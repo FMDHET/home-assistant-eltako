@@ -262,7 +262,7 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 - ☐ **AG5** — Tote v1.3.4-Migrationslogik in init (hass.data ist bei Start immer leer); `async_get_base_ids_of_registered_gateway` würde bei Aufruf IndexError werfen (Geräte ohne connections).
 
 ### Sensor (unique_id-Änderungen = Registry-Migration nötig)
-- ☐ **AS1 ⚡** — Tarif fehlt in der unique_id → Multi-Tarif-Zähler (`meter_tariffs: [1,2]`) erzeugen Kollisionen, Tarif ≥2 fehlt still.
+- ☑ **AS1 ⚡** — Tarif fehlt in der unique_id → Multi-Tarif-Zähler (`meter_tariffs: [1,2]`) erzeugen Kollisionen, Tarif ≥2 fehlt still. **ERLEDIGT v2.7.0** (B3): Tarif ist jetzt Teil der unique_id; erster Tarif behält die schlichte id (Bestandsschutz, keine Migration), Zusatz-Tarife bekommen `_tariff_<wert>`.
 - ☐ **AS2** — VOC: `VOLATILE_ORGANIC_COMPOUNDS` (µg/m³) mit Einheit ppb → Statistik-Ablehnung; korrekt wäre `VOLATILE_ORGANIC_COMPOUNDS_PARTS`; Nicht-Total-Substanzen haben Einheit `''`.
 - ☐ **AS3** — Lokalisierter Substanzname in der unique_id → Sprachwechsel verwaist Entities/Statistiken.
 - ☐ **AS4** (Upstream eltakobus) — A5-10-03-Decode: `target_temp` ohne `+8`-Offset → Zieltemperatur 8 K zu niedrig und gestaucht (Encode symmetrisch falsch → Tests round-trippen grün).
