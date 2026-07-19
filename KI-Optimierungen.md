@@ -280,6 +280,50 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 
 ---
 
+## 7. Agenda Runde 3 (2026-07-19) — neue Vorhaben V1–V3
+
+> Vom Nutzer beauftragt am 2026-07-19. **Empfohlene Reihenfolge: V1 → V2 → V3.**
+> Begründung: Erst alle Features in main konsolidieren (V1), damit Analyse und
+> Weiterentwicklungsplan (V2) auf dem vollständigen Code aufsetzen; das neue
+> BaseID-Schreib-Feature (V3) profitiert vom Analyse-Wissen und braucht ohnehin
+> die Hardware-Session zum Testen (Schreib-Limit!). Die Hardware-Punkte aus
+> Abschnitt 6 (AM1/AM2/AG1, AC1–AC8/M14) und der manuelle HA-Durchlauf lassen
+> sich mit dem V3-Test in EINER Session bündeln.
+
+### ☐ V1 — Branch-Konsolidierung: alle Features nach main überführen
+**Ziel:** Kein Feature liegt mehr nur in einem Seitenzweig; main ist die einzige Quelle der Wahrheit.
+**Ist-Stand (2026-07-19):** 6 Remote-Branches sind NICHT in main gemergt: `feature-branch`, `feature-branch-v1`, `grimmpp-patch-5`, `grimmpp-patch-9`, `version2`, `version2.1`. (Alle `stability-fixes-*`, `hassfest-zeroconf-dep` sowie `heating`, `integration-FLGTF55`, `EEP-A5-04-01-and-A5-07-01`, `feature/invert-sensor-signal`, `feature/testing`, `grimmpp-patch-1–4/6–8` sind bereits enthalten.)
+**Schritte:**
+1. Pro Branch: `git log main..origin/<branch>` + Diff sichten → Feature-Inventar erstellen (was ist drin, was davon fehlt in main tatsächlich noch — viele Patches sind vermutlich veraltet/überholt durch v2.x).
+2. Je Branch entscheiden: **übernehmen** (rebase/cherry-pick auf main, Konflikte gegen v2.2.0-Stand lösen), **überholt** (Feature existiert in main in besserer Form → Branch als obsolet markieren) oder **verwerfen** (mit Begründung dokumentieren).
+3. Übernommene Features: Tests ergänzen/anpassen, adversariales Review wie gehabt, dann `--no-ff`-Merge.
+4. Funktionsprüfung: ohne HA-Setup per Unit-/Mock-Tests; hardwarenahe Features auf die Hardware-Session-Checkliste setzen.
+5. Abschluss: obsolete Branches im Fork löschen (nur FMDHET, nichts Richtung grimmpp), damit die Branch-Liste den echten Zustand zeigt.
+**Aufwand:** M–L (abhängig vom Inventar). **Kein Hardware-Zwang** für die Sichtung; einzelne Features ggf. doch.
+
+### ☐ V2 — Komplettanalyse & Weiterentwicklungsplan („auf Herz und Nieren")
+**Ziel:** Detaillierte Prüfung der GESAMTEN Integration auf Richtigkeit, Verbesserungen, Erweiterungen; Ergebnis als eigene Markdown-Datei (Vorschlag: `ANALYSE-UND-ROADMAP.md`) + priorisierter Weiterentwicklungsplan.
+**Abgrenzung zu Audit R2 (Abschnitt 6):** R2 suchte gezielt latente *Bugs*. V2 ist breiter: Architektur, EEP-Abdeckung vs. Eltako-Produktpalette, Testabdeckung (Lücken: Config-Flow ungetestet!, Meter-Sensoren ungetestet), HA-Best-Practices (config entries vs. YAML, Entity-Naming, unique_id-Migrationspfad), Doku-Qualität, Upstream-Differenz zu grimmpp, Dependency-Strategie (4 dokumentierte Library-Bugs → Fork der Libs erwägen?).
+**Schritte:**
+1. Statische Komplettanalyse (Architektur-Review, HA-Konventions-Check, hassfest/HACS-Kür).
+2. Dynamische Tests soweit ohne Hardware möglich: Testabdeckung messen (coverage), fehlende Testklassen ergänzen (Config-Flow!, Meter, VNG-Protokoll), Mock-Bus-Integrationstests.
+3. EEP-/Geräte-Matrix: unterstützte vs. in Doku versprochene vs. real existierende Eltako-Geräte.
+4. Findings-Datei schreiben (Struktur wie dieses Dokument: Befund → Priorität → Aufwand), inkl. Bewertung der Abschnitt-6-Backlog-Punkte im Gesamtkontext.
+5. Roadmap ableiten: kurzfristig (Bugfixes/Backlog), mittelfristig (Features wie V3, UI-Konfiguration), langfristig (Architektur, Upstream-Beitrag).
+**Aufwand:** L. **Kein Hardware-Zwang** (Hardware-Verifikation einzelner Findings → Session-Checkliste).
+
+### ☐ V3 — Feature: Gateway-BaseID aus Home Assistant heraus SCHREIBEN
+**Ziel:** BaseID nicht nur lesen (heute: `GatewayBaseId`-Sensor), sondern ändern — mit **verpflichtender Nutzer-Quittierung**, da EnOcean-Chips nur eine stark begrenzte Anzahl BaseID-Änderungen erlauben (ESP3 `CO_WR_IDBASE`: max. ~10 Schreibvorgänge pro Chip, danach permanent gesperrt!).
+**Ist-Stand Technik (geprüft 2026-07-19):** Weder `esp2_gateway_adapter` noch `eltakobus` implementieren einen Schreibpfad — nur `send_base_id_request` (lesen). Nötig ist:
+1. **Recherche/Design:** (a) ESP3-Gateways (USB300, MGW/EUL-LAN): `CO_WR_IDBASE` (Common Command 0x07) + RET-Code-Auswertung (u. a. „FLASH_HW_ERROR/zu oft geschrieben"); Rest-Zähler ist NICHT auslesbar → Warnung muss das deutlich sagen. (b) ESP2-Gateways (FAM14/FAM-USB): klären, ob BaseID überhaupt per Telegramm änderbar ist (FAM14: Drehschalter/PCT14 — vermutlich nicht) → Feature ggf. nur für ESP3-Typen anbieten und für andere sauber ausblenden.
+2. **Library-Erweiterung:** `send_write_base_id(new_base_id)` + Antwort-Handling im Fork der Lib oder lokal in `tcp2serial_hardened.py`-Manier (gepinnte Kopie), da Upstream-Release nicht in unserer Hand.
+3. **HA-UX mit Quittierung (Designentscheidung nötig):** Vorschlag: Text-Entity (neue BaseID eingeben, validiert gegen Adressformat) + Bestätigungs-Button, der erst nach gesetztem Text aktiv wird und die Warnung (Schreib-Limit!) in Name/Beschreibung trägt; alternativ Service `eltako.write_base_id` mit Pflichtparameter `confirm: true`. KEIN Schreiben ohne expliziten zweiten Schritt; Erfolg/Fehlschlag als Event + Log; nach Erfolg Re-Read der BaseID zur Verifikation.
+4. **Sicherheitsnetz:** Rate-Limit im Code (z. B. 1 Schreibvorgang pro HA-Laufzeit ohne Neustart-Override), Validierung des erlaubten Adressbereichs (0xFF800000–0xFFFFFF80 bei ESP3), Abbruch bei identischer BaseID.
+5. **Tests:** Mock-Kommunikator (Schreib-Telegramm + RET-Codes simulieren); am echten Gerät **höchstens 1–2 Schreibvorgänge** einplanen (Limit!) — fester Punkt der Hardware-Session.
+**Aufwand:** M–L. **Hardware-Session zwingend** für den Abschlusstest.
+
+---
+
 ## 3a. Offene Produktentscheidungen (bitte entscheiden)
 
 1. ~~**Rocker-Switch: 1 oder 2 Events pro Telegramm?**~~ **ENTSCHIEDEN 2026-07-18 (v2.1.3): Variante (a), 2 Events.** Das button-spezifische Event (Suffix z. B. `_rt`) ist reaktiviert — Prä-v2.0.0-Automationen funktionieren wieder; die 3 Test-Failures sind Geschichte (Suite seither komplett grün). Akkord-IDs werden sortiert gefeuert (`_lt_rb`, nie `_rb_lt`), siehe Phase-4-Review.
@@ -330,3 +374,4 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 | 2026-07-19 | Phase 8: Testlauf/hassfest/Config-Validierung ✅; ha.yaml-`device_type`-Tippfehler + Beispiel-Test-Bug behoben | offen nur: manueller HA-Test, HACS-Repo-Settings (Nutzer), M14 (Hardware) |
 | 2026-07-19 | HACS-Action grün (Nutzer: Issues + Topics gesetzt); Translations (en/de) angelegt, Error-Slugs | CI komplett grün |
 | 2026-07-19 | **Audit Runde 2**: Gesamt-Codebase (6 Auditoren, 48 Kandidaten) → 20 sichere Fixes umgesetzt, 26 Befunde in Backlog (Abschnitt 6), 2 neue Upstream-Bugs dokumentiert | 163 Tests, 3-fach verifiziert, **Release v2.2.0** |
+| 2026-07-19 | **Agenda Runde 3** (Abschnitt 7): V1 Branch-Konsolidierung (6 ungemergte Branches inventarisiert), V2 Komplettanalyse+Roadmap, V3 BaseID-Schreiben (Schreibpfad fehlt in beiden Libs, CO_WR_IDBASE-Limit ~10×) | Reihenfolge V1→V2→V3 festgelegt |
