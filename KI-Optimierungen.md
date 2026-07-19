@@ -331,7 +331,10 @@ Jede Phase einzeln umsetzen → Tests laufen lassen → committen. So bleibt jed
 5. Abschluss: obsolete Branches im Fork löschen (nur FMDHET, nichts Richtung grimmpp), damit die Branch-Liste den echten Zustand zeigt.
 **Aufwand:** M–L (abhängig vom Inventar). **Kein Hardware-Zwang** für die Sichtung; einzelne Features ggf. doch.
 
-### ☐ V2 — Komplettanalyse & Weiterentwicklungsplan („auf Herz und Nieren")
+### ☑ V2 — Komplettanalyse & Weiterentwicklungsplan („auf Herz und Nieren") — **ERLEDIGT 2026-07-19**
+Ergebnis in **`ANALYSE-UND-ROADMAP.md`** (eigene Datei): Messungen (Coverage 53 %, ruff), Architektur (A1–A6, Kern: A5 Adressierung ohne Eigentümer = Wurzel AM1/AM2/AG1), EEP-Matrix (alle 25 Lib-EEPs verdrahtet; Lücken T1–T3), HA-Konformität (Availability/unique_id-Migration/entity_category/Diagnostics/Repairs; API-seitig bereits sauber), Teststrategie (28 Punkte, Ziel ~70 %), Abhängigkeits-Strategie (patchen statt forken), Doku/UX (D1–D9/U1–U3), und eine **5-Wellen-Roadmap** (A Quick-Wins → B Lifecycle → C Architektur → D Hardware-Features/V3 → E strategisch). Details siehe die Datei; Original-Beschreibung unten.
+
+### ☐ V2 (Original-Beschreibung) — Komplettanalyse & Weiterentwicklungsplan
 **Ziel:** Detaillierte Prüfung der GESAMTEN Integration auf Richtigkeit, Verbesserungen, Erweiterungen; Ergebnis als eigene Markdown-Datei (Vorschlag: `ANALYSE-UND-ROADMAP.md`) + priorisierter Weiterentwicklungsplan.
 **Abgrenzung zu Audit R2 (Abschnitt 6):** R2 suchte gezielt latente *Bugs*. V2 ist breiter: Architektur, EEP-Abdeckung vs. Eltako-Produktpalette, Testabdeckung (Lücken: Config-Flow ungetestet!, Meter-Sensoren ungetestet), HA-Best-Practices (config entries vs. YAML, Entity-Naming, unique_id-Migrationspfad), Doku-Qualität, Upstream-Differenz zu grimmpp, Dependency-Strategie (4 dokumentierte Library-Bugs → Fork der Libs erwägen?).
 **Schritte:**
