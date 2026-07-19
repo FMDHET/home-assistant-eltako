@@ -131,15 +131,26 @@ class EnOceanGateway:
         if handler in self._base_id_change_handlers:
             self._base_id_change_handlers.remove(handler)
 
+    def _schedule_handler(self, coro):
+        """Schedule a handler coroutine on the HA event loop, thread-safely. (A-r2)
+
+        The _fire_* methods are invoked from the serial-bus thread (receive
+        callback) and from executor threads (reconnect); hass.create_task is not
+        thread-safe and must only be called from inside the event loop.
+        """
+        self.hass.loop.call_soon_threadsafe(self.hass.async_create_task, coro)
+
     def _fire_base_id_change_handlers(self, base_id: AddressExpression):
         for handler in self._base_id_change_handlers:
-            self.hass.create_task(
-                handler(base_id)
-            )
+            self._schedule_handler(handler(base_id))
 
     def add_connection_state_changed_handler(self, handler):
         self._connection_state_handlers.append(handler)
-        self._fire_connection_state_changed_event(self._bus.is_active())
+        # A-r2: notify only the NEWLY added handler with the current state.
+        # Previously ALL handlers re-fired on every registration: O(N^2) handler
+        # invocations at setup, redundant base-id/version queries per entity, and
+        # each burst reset the memory-read guard via connection_state_changed.
+        self._schedule_handler(handler(self._bus.is_active()))
 
     def remove_connection_state_changed_handler(self, handler):
         # H7: allow entities to deregister on removal
@@ -149,9 +160,7 @@ class EnOceanGateway:
 
     def _fire_connection_state_changed_event(self, status):
         for handler in self._connection_state_handlers:
-            self.hass.create_task(
-                handler(status)
-            )
+            self._schedule_handler(handler(status))
 
 
     def set_last_message_received_handler(self, handler):
@@ -168,7 +177,7 @@ class EnOceanGateway:
 
     def _fire_last_message_received_event(self):
         if self._last_message_received_handler:
-            self.hass.create_task(
+            self._schedule_handler(
                 self._last_message_received_handler( datetime.now(UTC).replace(tzinfo=pytz.UTC) )
             )
 
@@ -184,20 +193,27 @@ class EnOceanGateway:
 
     def _fire_received_message_count_event(self):
         self._received_message_count += 1
+        self._notify_received_message_count()
+
+    def _notify_received_message_count(self):
         if self._received_message_count_handler:
-            self.hass.create_task(
+            self._schedule_handler(
                 self._received_message_count_handler( self._received_message_count ),
             )
 
     def report_message_stats(self, data=None):
-        """Received message from bus in HA loop. (Actions needs to run outside bus thread!)"""
+        """Update message statistics. Called from the serial-bus receive thread -
+        the _fire_* helpers schedule the handlers onto the HA loop thread-safely."""
         self._fire_received_message_count_event()
         self._fire_last_message_received_event()
 
-    
+
     def _init_bus(self):
         self._received_message_count = 0
-        self._fire_received_message_count_event()
+        # A-r2: notify without incrementing - the counter previously started at 1
+        # (and reset to 1 on every reconnect) because the reset called the
+        # incrementing fire method.
+        self._notify_received_message_count()
 
         if GatewayDeviceType.is_esp2_gateway(self.dev_type):
             self._bus = RS485SerialInterfaceV2(self.serial_path, 
@@ -283,12 +299,17 @@ class EnOceanGateway:
 
     async def read_memory_of_all_bus_members(self):
         if not self._reading_memory_of_devices_is_running.is_set():
+            # A-r2: set SYNCHRONOUSLY before spawning the worker - previously the
+            # flag was set inside the worker thread, so a double button press passed
+            # this check twice; two concurrent reads interleave bus telegrams and the
+            # second run restores the bus callback to None (library saves/restores
+            # it around the read), leaving the gateway deaf until reconnect.
+            self._reading_memory_of_devices_is_running.set()
             await asyncio.to_thread(asyncio.run, self._read_memory_of_all_bus_members())
 
 
     async def _read_memory_of_all_bus_members(self):
         try:
-            self._reading_memory_of_devices_is_running.set()
             await request_memory_of_all_devices(self._bus)
         except Exception as e:
             LOGGER.exception(f"[Gateway] [Id: {self.dev_id}] {e}")

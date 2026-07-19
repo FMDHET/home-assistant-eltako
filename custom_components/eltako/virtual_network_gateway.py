@@ -94,8 +94,15 @@ class VirtualNetworkGateway(EnOceanGateway):
         # printf-style args: formatting an ESP2Message per telegram is wasted work when debug is off
         LOGGER.debug("[%s] received message: %s from gateway: %s", LOGGING_PREFIX_VIRT_GW, msg, gateway.dev_name)
 
-        if gateway not in self.sending_gateways:
+        # A-r2: dedupe by gateway id and replace stale objects. The list previously
+        # only ever grew: a reloaded config entry left its dead gateway object in
+        # here forever (leak) and send_gateway_info replayed outdated base-id info
+        # to every new client alongside the current one.
+        existing = next((g for g in self.sending_gateways if g.dev_id == gateway.dev_id), None)
+        if existing is None:
             self.sending_gateways.append(gateway)
+        elif existing is not gateway:
+            self.sending_gateways[self.sending_gateways.index(existing)] = gateway
 
         # iterate over a snapshot: client handler threads add/remove entries concurrently (H8b)
         for cc in list(self.connected_clients):

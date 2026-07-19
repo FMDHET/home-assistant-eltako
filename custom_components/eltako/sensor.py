@@ -416,13 +416,20 @@ async def async_setup_entry(
                 LOGGER.critical(e, exc_info=True)
 
     # add id field for every device
+    # A-r2: dedupe - the same device address listed in several platform sections
+    # (a documented pattern, e.g. F6-10-00 as sensor + binary_sensor) produced two
+    # 'Id' entities with identical unique_id -> HA dropped one with an error.
+    seen_id_field_devices = set()
     for pl in PLATFORMS:
         if pl in config:
             for entity_config in config[pl]:
                 try:
                     dev_conf = DeviceConf(entity_config)
+                    if b2s(dev_conf.id[0]) in seen_id_field_devices:
+                        continue
+                    seen_id_field_devices.add(b2s(dev_conf.id[0]))
                     entities.append(StaticInfoField(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, "Id", b2s(dev_conf.id[0]), "mdi:identifier"))
-                
+
                 except Exception as e:
                     LOGGER.warning("[%s] Could not load configuration", Platform.BINARY_SENSOR)
                     LOGGER.critical(e, exc_info=True)
@@ -540,7 +547,13 @@ class EltakoVoltageSensor(EltakoSensor):
         except Exception as e:
             LOGGER.warning("[Voltage Sensor %s] Could not decode message: %s", self.dev_id, str(e))
             return
-        
+
+        # A-r2: A5-07-01 declares in data[3] bit 0 whether the voltage field is valid;
+        # devices without voltage measurement otherwise produced fabricated readings.
+        # (getattr: the eltakobus attribute name contains a typo, guard against a future rename)
+        if not getattr(decoded, 'support_volrage_availability', getattr(decoded, 'support_voltage_availability', 1)):
+            return
+
         self._attr_native_value = decoded.support_voltage
 
         self.schedule_update_ha_state()
@@ -597,7 +610,9 @@ class EltakoMeterSensor(EltakoSensor):
         elif (not cumulative) and len(msg.data) > 3 and msg.data[3] != 0x8F and self.entity_description.key == SENSOR_TYPE_ELECTRICITY_CURRENT: # N9: guard index; 0x8F means it's sending the serial number of the meter
             self._attr_native_value = round(calculatedValue, 2)
             self.schedule_update_ha_state()
-        elif (not cumulative) and self._tariff == tariff and (
+        elif (not cumulative) and len(msg.data) > 3 and msg.data[3] != 0x8F and self._tariff == tariff and (
+            # A-r2: same 0x8F serial-number guard as the electricity branch - a serial
+            # telegram whose channel nibble matches the tariff was decoded as flow rate
             self.entity_description.key == SENSOR_TYPE_GAS_CURRENT or
             self.entity_description.key == SENSOR_TYPE_WATER_CURRENT):
             # l/s -> m3/h
@@ -867,6 +882,13 @@ class EltakoAirQualitySensor(EltakoSensor):
             LOGGER.warning("[Air Quality Sensor %s] Could not decode message: %s", self.dev_id, str(e))
             return
         
+        # A-r2: eltakobus leaves voc_type as None for VOC codes not in VOC_SubstancesType
+        # (gap at 21, everything between 36 and 254) - dereferencing raised AttributeError
+        # and produced a full traceback per telegram.
+        if decoded.voc_type is None:
+            LOGGER.debug("[Air Quality Sensor %s] Ignoring telegram with unknown VOC substance type.", self.dev_id)
+            return
+
         if decoded.voc_type.index == self.voc_type.index:
             # LOGGER.debug(f"[EltakoAirQualitySensor] received message - concentration: {decoded.concentration}, voc_type: {decoded.voc_type}, voc_unit: {decoded.voc_unit}")
             self._attr_native_value = decoded.concentration

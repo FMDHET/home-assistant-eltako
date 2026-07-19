@@ -119,7 +119,10 @@ class EltakoEntity(Entity):
                 sender_id = self.sender_id
 
         if sender_id is not None:
-            return self.gateway.validate_sender_id(self.sender_id, self.dev_name)
+            # A7: use the resolved local variable - previously self.sender_id was
+            # validated even when an explicit sender_id was passed (AttributeError
+            # for entities without a sender_id attribute, wrong id otherwise).
+            return self.gateway.validate_sender_id(sender_id, self.dev_name)
         return True
 
     @property

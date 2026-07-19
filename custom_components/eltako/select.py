@@ -79,12 +79,18 @@ class ClimatePriority(EltakoEntity, SelectEntity, RestoreEntity):
         LOGGER.debug(f"[{self._attr_ha_platform} {self.dev_id}] latest state - attributes: {latest_state.attributes}")
         try:
             self._attr_current_option = latest_state.state
-            if self._attr_current_option in [None, 'unknown']:
+            # A-r2: anything that is not a known option (None, 'unknown', 'unavailable'
+            # from a shutdown while the gateway was down, renamed options, ...) falls
+            # back to the default - previously 'unavailable' was accepted and even
+            # fired onto the bus as a climate priority.
+            if self._attr_current_option not in self._attr_options:
                 self._attr_current_option = self.DEFAULT_PRIO
-                
-        except Exception as e:
+
+        except Exception:
+            # H2 pattern: never raise from load_value_initially (it would prevent
+            # the entity from being added); the fallback default is already set.
+            LOGGER.exception(f"[{self._attr_ha_platform} {self.dev_id}] Could not restore state.")
             self._attr_current_option = self.DEFAULT_PRIO
-            raise e
         
         ## send value to initially set value of climate controller
         self.hass.bus.fire(self.event_id, { "priority": self._attr_current_option })
