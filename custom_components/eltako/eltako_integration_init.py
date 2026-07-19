@@ -111,6 +111,61 @@ def get_device_config_for_gateway(hass: HomeAssistant, config_entry: ConfigEntry
     return config_helpers.get_device_config(hass.data[DATA_ELTAKO][ELTAKO_CONFIG], gateway.dev_id)
 
 
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate a config entry to the current (VERSION, MINOR_VERSION). (B2)
+
+    Foundation for all config-entry / registry migrations. Home Assistant calls this
+    only when the stored version is behind the config flow's (VERSION=1,
+    MINOR_VERSION=2); a stored MAJOR version newer than ours is already rejected by HA
+    before we are called (guarded again below so a future major bump fails loudly).
+
+    Steps (each idempotent, applied in ascending order):
+      1.1 -> 1.2  Backfill the config-entry unique_id (`eltako_gateway_<id>`) for
+                  entries created before v2.4.0 (AF1), so the duplicate-gateway guard
+                  also protects installs that predate it.
+
+    Later entity-registry unique_id migrations (AS1/AM3/AS2/AS3, B3) will be added as
+    further minor-version steps here, using homeassistant.helpers.entity_registry.
+    """
+    LOGGER.debug("[%s] Migrating config entry '%s' from version %s.%s.",
+                 LOG_PREFIX_INIT, config_entry.title, config_entry.version, config_entry.minor_version)
+
+    if config_entry.version > 1:
+        # A newer MAJOR version cannot be downgraded. HA already refuses this, but be
+        # explicit so a future major bump does not silently pass an unmigrated entry.
+        LOGGER.error("[%s] Config entry '%s' has unsupported version %s (current major is 1).",
+                     LOG_PREFIX_INIT, config_entry.title, config_entry.version)
+        return False
+
+    # --- 1.1 -> 1.2 : backfill config-entry unique_id (AF1) ---
+    if config_entry.minor_version < 2:
+        new_unique_id = config_entry.unique_id
+        if new_unique_id is None:
+            description = config_entry.data.get(CONF_GATEWAY_DESCRIPTION)
+            gw_id = config_helpers.get_id_from_gateway_name(description) if description else None
+            if gw_id is None:
+                LOGGER.warning("[%s] Could not derive a gateway id for '%s'; leaving unique_id unset.",
+                               LOG_PREFIX_INIT, config_entry.title)
+            else:
+                candidate = f"eltako_gateway_{gw_id}"
+                # Never invent a colliding unique_id: legacy AF1 could leave two entries
+                # for the same gateway. HA does NOT enforce uniqueness on async_update_entry.
+                clash = any(e.entry_id != config_entry.entry_id and e.unique_id == candidate
+                            for e in hass.config_entries.async_entries(DOMAIN))
+                if clash:
+                    LOGGER.warning("[%s] Another config entry already uses unique_id '%s'; leaving '%s' "
+                                   "unset (duplicate gateway entry - consider removing one).",
+                                   LOG_PREFIX_INIT, candidate, config_entry.title)
+                else:
+                    new_unique_id = candidate
+
+        hass.config_entries.async_update_entry(config_entry, unique_id=new_unique_id, minor_version=2)
+        LOGGER.info("[%s] Migrated config entry '%s' to version 1.2 (unique_id=%s).",
+                    LOG_PREFIX_INIT, config_entry.title, new_unique_id)
+
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up an Eltako gateway for the given entry."""
     LOGGER.info(f"[{LOG_PREFIX_INIT}] Start gateway setup.")

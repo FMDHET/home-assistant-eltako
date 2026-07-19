@@ -1,5 +1,11 @@
 # Changes and Feature List
 
+## Version 2.6.0 — Roadmap-Welle B (B2): Migrations-Fundament (`async_migrate_entry`)
+* **Sauberes Versions-/Migrations-Gerüst für Config-Einträge:** Die Integration besitzt jetzt ein `async_migrate_entry` (Config-Entry-Version **1.2**). Home Assistant ruft es automatisch auf, wenn ein gespeicherter Eintrag älter ist, und aktualisiert ihn schonend — die Grundlage für alle künftigen `unique_id`-/Struktur-Migrationen (kommt in B3).
+* **Alt-Einträge erhalten die Doppel-Gateway-Absicherung nachträglich:** Vor v2.4.0 angelegte Gateways hatten noch keine eindeutige Config-Entry-ID (`unique_id`). Die Migration trägt sie jetzt nach (`eltako_gateway_<id>`), sodass auch bestehende Installationen vor versehentlichem doppelten Einrichten desselben Gateways geschützt sind (AF1).
+* **Robuste Migration:** Ein bereits vorhandenes `unique_id` wird nie überschrieben; bei einem Alt-Zustand mit zwei Einträgen für dasselbe Gateway wird **keine** kollidierende ID erzeugt (der zweite bleibt ohne, mit Warnhinweis); eine unerwartet neuere Major-Version wird sauber abgelehnt statt still akzeptiert.
+* Tests: 6 neue Tests (`test_migration.py`); Suite **204 grün**. Keine Nutzeraktion nötig — die Migration läuft transparent beim Update.
+
 ## Version 2.5.0 — Roadmap-Welle B (B1): Verfügbarkeit folgt der Gateway-Verbindung
 * **Entities werden „nicht verfügbar", wenn das Gateway die Verbindung verliert:** Bricht die serielle/TCP-Verbindung zum Gateway ab (z. B. LAN-Gateway-Drop, USB abgezogen), zeigen die betroffenen Geräte-Entities jetzt **`unavailable`** statt stillschweigend eingefrorene Altwerte. Ein Verbindungsabriss wird dadurch im UI **sichtbar** und Automationen können darauf reagieren (`available`-Kopplung an den Verbindungszustand — behebt HA-Konformitätslücke §3d). Sobald das Gateway wieder verbindet, werden die Entities automatisch wieder verfügbar.
 * **Gateway-eigene Diagnose/Steuerung bleibt bewusst sichtbar:** Der Verbindungs-Sensor („Connected"), der **Reconnect-Button**, „Read memory", Base-ID und die Gateway-Infofelder bleiben **gerade dann** bedienbar/sichtbar, wenn die Verbindung getrennt ist — sonst könnte man nicht mehr reconnecten oder den Zustand ablesen.

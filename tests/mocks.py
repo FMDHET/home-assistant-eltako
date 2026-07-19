@@ -43,6 +43,9 @@ class FakeConfigEntries():
         self.unloaded = None
         self.forward_side_effect = None
         self.unload_result = True
+        # B2: registry of known entries + record of async_update_entry calls
+        self.entries = []
+        self.updated = []
     async def async_forward_entry_setups(self, entry, platforms):
         if self.forward_side_effect is not None:
             raise self.forward_side_effect
@@ -51,6 +54,23 @@ class FakeConfigEntries():
     async def async_unload_platforms(self, entry, platforms):
         self.unloaded = list(platforms)
         return self.unload_result
+    def async_entries(self, domain=None):
+        # B2: mirrors HA's sync accessor used by async_migrate_entry's collision check
+        return [e for e in self.entries if domain is None or getattr(e, "domain", None) == domain]
+    def async_update_entry(self, entry, **kwargs):
+        # B2: HA's async_update_entry is a SYNC method that only writes/records when a
+        # field actually CHANGES (it returns False and no-ops otherwise). Model that so
+        # tests don't get false confidence about redundant updates.
+        # NOTE: does NOT model HA's immutability - a real ConfigEntry is frozen and wraps
+        # data/options in MappingProxyType. Fine while only scalar fields (unique_id/
+        # minor_version) are updated; revisit when B3 migrations start passing data=.
+        changed = any(getattr(entry, k, None) != v for k, v in kwargs.items())
+        if not changed:
+            return False
+        for k, v in kwargs.items():
+            setattr(entry, k, v)
+        self.updated.append((entry, dict(kwargs)))
+        return True
 
 
 class HassMock():
