@@ -26,5 +26,11 @@
       "no_configuration_available": "Kein Gateway zum Hinzufügen verfügbar. Alle konfigurierten Gateways sind bereits eingerichtet.",
       "already_configured": "Dieses Gateway ist bereits eingerichtet."
     }
+  },
+  "issues": {
+    "missing_base_id": {
+      "title": "Eltako-Gateway hat keine Base-ID",
+      "description": "Das Gateway \"{gateway}\" ({gateway_type}) hat keine Base-ID (00-00-00-00). Dieser Gateway-Typ fragt seine Base-ID nicht automatisch ab, daher wird jedes empfangene Telegramm ignoriert (der Empfangszähler steigt zwar, aber keine Entität wird aktualisiert). Trage in deiner Eltako-Konfiguration eine gültige `base_id` für dieses Gateway ein und lade die Integration neu."
+    }
   }
 }

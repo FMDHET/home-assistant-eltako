@@ -26,5 +26,11 @@
       "no_configuration_available": "No gateway available to add. All configured gateways are already set up.",
       "already_configured": "This gateway is already configured."
     }
+  },
+  "issues": {
+    "missing_base_id": {
+      "title": "Eltako gateway has no base ID",
+      "description": "The gateway \"{gateway}\" ({gateway_type}) has no base ID (00-00-00-00). This gateway type does not query its base ID automatically, so every received telegram is being ignored (the received-message counter still increases, but no entities update). Set a valid `base_id` for this gateway in your Eltako configuration and reload the integration."
+    }
   }
 }
