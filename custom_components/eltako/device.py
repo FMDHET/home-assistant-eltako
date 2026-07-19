@@ -24,6 +24,15 @@ class EltakoEntity(Entity):
     # after construction; None = no area configured.
     _attr_dev_area: str | None = None
 
+    # B1: real device entities become "unavailable" when their gateway loses the
+    # bus/TCP connection, so a silent drop is VISIBLE in the UI (and gates
+    # automations) instead of showing stale values. Gateway-owned diagnostic/config
+    # entities set this False - they must stay visible precisely WHILE disconnected
+    # (the connection-state sensor, the reconnect button, the gateway info fields).
+    _attr_follow_gateway_availability: bool = True
+    # cached connection state; seeded in async_added_to_hass, updated by the handler.
+    _gateway_connected: bool = True
+
 
     def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str="Device", dev_eep: EEP=None, description_key:str=None):
         """Initialize the device."""
@@ -94,6 +103,20 @@ class EltakoEntity(Entity):
                 self.hass, ELTAKO_GLOBAL_EVENT_BUS_ID, self._message_received_callback
             )
         )
+
+        # B1: couple availability to the gateway connection state. Seed the current
+        # value synchronously (so the very first state write is already correct),
+        # then subscribe. add_connection_state_changed_handler also notifies this
+        # handler once with the current state right after registration.
+        if self._attr_follow_gateway_availability:
+            try:
+                self._gateway_connected = self.gateway.is_connected
+            except Exception:
+                LOGGER.debug("[%s %s] Could not seed gateway connection state.", self._attr_ha_platform, self.dev_id)
+            self.gateway.add_connection_state_changed_handler(self._on_gateway_connection_state)
+            self.async_on_remove(
+                lambda: self.gateway.remove_connection_state_changed_handler(self._on_gateway_connection_state)
+            )
 
         # F1: assign the configured area to devices that exist already but have NO
         # area yet (suggested_area only takes effect on creation). Deliberately
@@ -186,6 +209,44 @@ class EltakoEntity(Entity):
     def unique_id(self) -> str:
         """Return the unique id of device"""
         return self._attr_unique_id
+
+    @property
+    def available(self) -> bool:
+        """Return if the entity is available. (B1)
+
+        Device entities follow the gateway connection state; gateway-owned
+        diagnostic/config entities opt out via _attr_follow_gateway_availability
+        and keep the default (always available)."""
+        if self._attr_follow_gateway_availability:
+            return self._gateway_connected
+        return super().available
+
+    async def _on_gateway_connection_state(self, connected: bool) -> None:
+        """B1: gateway bus connect/disconnect -> refresh this entity's availability.
+
+        Runs on the HA event loop (scheduled thread-safely by the gateway's
+        _schedule_handler). The notified `connected` value is intentionally NOT
+        trusted: the register-time immediate-notify and real connection-change
+        events can be scheduled out of order relative to a concurrent flap, so
+        applying the passed value last-writer-wins could strand availability at a
+        stale value. Instead we reconcile to the gateway's CURRENT state
+        (`is_connected` = the bus's live, cheap, non-blocking flag), which makes the
+        outcome independent of delivery order and self-healing. Only writes on an
+        actual change."""
+        new_state = self.gateway.is_connected
+        if new_state == self._gateway_connected:
+            return
+        self._gateway_connected = new_state
+        try:
+            self.async_write_ha_state()
+        except Exception:
+            # Best-effort: a not-yet-added entity or a raising state-calculation
+            # property must never crash the connection-state fan-out or surface as an
+            # unhandled-task traceback on every connection toggle. The correct
+            # availability is already cached and reported on the next successful write.
+            # (connected = the notified value; new_state = the reconciled live truth.)
+            LOGGER.debug("[%s %s] Could not write availability state (notified=%s, reconciled=%s).",
+                         self._attr_ha_platform, self.dev_id, connected, new_state, exc_info=True)
 
     def _message_received_callback(self, data: dict) -> None:
         """Handle incoming messages."""

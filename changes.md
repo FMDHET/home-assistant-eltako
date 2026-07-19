@@ -1,5 +1,12 @@
 # Changes and Feature List
 
+## Version 2.5.0 — Roadmap-Welle B (B1): Verfügbarkeit folgt der Gateway-Verbindung
+* **Entities werden „nicht verfügbar", wenn das Gateway die Verbindung verliert:** Bricht die serielle/TCP-Verbindung zum Gateway ab (z. B. LAN-Gateway-Drop, USB abgezogen), zeigen die betroffenen Geräte-Entities jetzt **`unavailable`** statt stillschweigend eingefrorene Altwerte. Ein Verbindungsabriss wird dadurch im UI **sichtbar** und Automationen können darauf reagieren (`available`-Kopplung an den Verbindungszustand — behebt HA-Konformitätslücke §3d). Sobald das Gateway wieder verbindet, werden die Entities automatisch wieder verfügbar.
+* **Gateway-eigene Diagnose/Steuerung bleibt bewusst sichtbar:** Der Verbindungs-Sensor („Connected"), der **Reconnect-Button**, „Read memory", Base-ID und die Gateway-Infofelder bleiben **gerade dann** bedienbar/sichtbar, wenn die Verbindung getrennt ist — sonst könnte man nicht mehr reconnecten oder den Zustand ablesen.
+* **Robust gegen Verbindungs-Flattern:** Der Verfügbarkeits-Zustand wird immer gegen den **aktuellen** Bus-Zustand abgeglichen (nicht gegen eine evtl. veraltete Benachrichtigung), und die Handler-Fan-out-Liste wird per Snapshot iteriert — so kann ein Entity bei schnellem Auf/Zu nicht auf einem falschen Zustand „hängen bleiben" (adversarial reviewt: 3 Finder + Verifier).
+* Tests: 12 neue Tests (`test_availability.py`); Suite **198 grün**.
+* *Hinweis:* Bei einem instabilen Gateway, das sich alle paar Sekunden neu verbindet, wechseln die Entities entsprechend zwischen verfügbar/nicht verfügbar — das spiegelt die Realität wider und ist durch `reconnection_timeout` (Standard 15 s) gedeckelt.
+
 ## Version 2.4.0 — Roadmap-Welle A: Lifecycle-Politur, neue Sensoren, mehr Tests
 * **Doppeltes Hinzufügen desselben Gateways verhindert:** Der Config-Entry bekommt jetzt eine eindeutige ID pro Gateway (`_abort_if_unique_id_configured`) — ein Gateway kann nicht mehr versehentlich zweimal eingerichtet werden (behebt AF1).
 * **Diagnose-Entities richtig kategorisiert:** Gateway-Status/-Infos, Base-ID, Zähler, Batteriespannung laufen jetzt als **Diagnose**, die Aktions-Buttons (Reconnect, Speicher auslesen, Teach-In) als **Konfiguration** (`entity_category`). Sie werden dadurch im UI korrekt gruppiert und aus Auto-Dashboards/Sprachassistenten herausgehalten.

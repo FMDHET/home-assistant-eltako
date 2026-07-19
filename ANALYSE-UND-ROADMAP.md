@@ -178,7 +178,7 @@ Konsolidiert aus dieser Analyse **plus** dem bestehenden Backlog (`KI-Optimierun
 ### Welle B — Lifecycle-Modernisierung & Testfundament (mittelfristig, ohne Hardware)
 | # | Maßnahme | Ref | Aufwand |
 |---|---|---|---|
-| B1 | **Availability** an Gateway-Verbindung koppeln (Basisklasse) ⚡ | HA §3d | M |
+| B1 | ☑ **Availability** an Gateway-Verbindung koppeln (Basisklasse) ⚡ — **ERLEDIGT v2.5.0** (2026-07-19) | HA §3d | M |
 | B2 | `async_migrate_entry` + Entity-Registry-Migration etablieren (**Fundament für alle unique_id-Fixes**) | HA §3c | M |
 | B3 | unique_id-Backlog nach B2 ausrollen: Tarif in Zähler-Id (AS1), left/right-Diskriminator (AM3), VOC-Sprach-/Klassen-Id (AS2/AS3) | Backlog AS/AM | M |
 | B4 | `repairs`-Issue für Base-Id-/Gateway-Fehler (**AG1** sichtbar machen) + `diagnostics.py` | HA §4 | M |
@@ -186,6 +186,8 @@ Konsolidiert aus dieser Analyse **plus** dem bestehenden Backlog (`KI-Optimierun
 | B6 | Test-Welle P1: `test_config_flow.py`, `test_init_setup.py` → ~70 % Coverage | §5 | M |
 | B7 | OptionsFlow für `general_settings` + Gateway-Tuning (erster Schritt aus der YAML-Doppelpflege) | HA §1 | M |
 | B8 | Doku-Vollrevision D5/D9/U1/U3 (LAN-Felder, Single-Source `ha.yaml`, device_type-Tabelle) | §7 | M |
+
+*B1-Follow-up (klein, optional):* `GatewayConnectionState.value_changed` meldet den angezeigten Verbindungs-Wert noch aus dem Notify-Argument — dieselbe Out-of-order-Flap-Staleness, die B1 für die **Verfügbarkeit** bereits behoben hat (Reconcile auf `gateway.is_connected`). Bewusst **nicht** in v2.5.0 mitgezogen, um test-fixiertes Bestandsverhalten nicht ungefragt zu ändern; bei Bedarf identischer 1-Zeilen-Fix + Anpassung von `test_binary_sensor_GatewayConnectionState.py`. Die Snapshot-Iteration des Handler-Fan-outs (Bus-Thread-Sicherheit) kommt dem Sensor bereits zugute.
 
 ### Welle C — Architektur-Refactoring (größer, weiter draußen)
 | # | Maßnahme | Ref | Aufwand |

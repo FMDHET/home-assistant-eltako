@@ -957,6 +957,7 @@ class EltakoAirQualitySensor(EltakoSensor):
 class GatewayLastReceivedMessage(EltakoSensor):
     """Protocols last time when message received"""
     _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3
+    _attr_follow_gateway_availability = False   # B1: gateway diagnostic, stays visible when disconnected
 
     def __init__(self, platform: str, gateway: EnOceanGateway):
         super().__init__(platform, gateway,
@@ -1008,6 +1009,7 @@ class GatewayLastReceivedMessage(EltakoSensor):
 class GatewayReceivedMessagesInActiveSession(EltakoSensor):
     """Protocols amount of messages per session"""
     _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3
+    _attr_follow_gateway_availability = False   # B1: gateway diagnostic, stays visible when disconnected
 
     def __init__(self, platform: str, gateway: EnOceanGateway):
         super().__init__(platform, gateway,
@@ -1062,6 +1064,7 @@ class GatewayReceivedMessagesInActiveSession(EltakoSensor):
 class GatewayBaseId(EltakoSensor):
     """"Displays base id of gateway."""
     _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3
+    _attr_follow_gateway_availability = False   # B1: gateway diagnostic, stays visible when disconnected
 
     def __init__(self, platform: str, gateway: EnOceanGateway):
         super().__init__(platform, gateway,
@@ -1105,8 +1108,11 @@ class GatewayBaseId(EltakoSensor):
 
 
 class StaticInfoField(EltakoSensor):
-    """Key value fields for gateway information"""
+    """Key value fields - used for per-DEVICE diagnostics ("Id", "Event Id").
+    The gateway-owned variant is the GatewayInfoField subclass below."""
     _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3 (also covers GatewayInfoField)
+    # B1: NOTE - this base class is a DEVICE entity (dev_id = the real device), so it
+    # follows gateway availability (default). Only GatewayInfoField opts out.
 
     def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, key:str, value:str, icon:str=None):
         super().__init__(platform, gateway,
@@ -1144,6 +1150,8 @@ class VirtGWInfoField(SensorEntity):
 
 class GatewayInfoField(StaticInfoField):
     """Key value fields for gateway information"""
+    # B1: gateway-owned (device_info points at the gateway) - stays visible while disconnected.
+    _attr_follow_gateway_availability = False
 
     def __init__(self, platform: str, gateway: EnOceanGateway, key:str, value:str, icon:str=None):
         super().__init__(platform, 
@@ -1168,8 +1176,10 @@ class GatewayInfoField(StaticInfoField):
         )
         
 class EventListenerInfoField(EltakoSensor):
-    """Key value fields for gateway information"""
+    """Per-DEVICE "Pushed Buttons" field for wall switches (event-driven)."""
     _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3
+    # B1: NOTE - device entity (dev_id = the real switch), so it FOLLOWS gateway
+    # availability (default). It is NOT gateway-owned despite the legacy docstring.
 
     def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, event_id: str, key:str, convert_event_function, icon:str=None):
         super().__init__(platform, gateway,

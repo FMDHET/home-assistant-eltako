@@ -141,7 +141,9 @@ class EnOceanGateway:
         self.hass.loop.call_soon_threadsafe(self.hass.async_create_task, coro)
 
     def _fire_base_id_change_handlers(self, base_id: AddressExpression):
-        for handler in self._base_id_change_handlers:
+        # B1: snapshot - handlers may be added/removed on the loop thread while this
+        # iterates on the bus/reconnect thread (see _fire_connection_state_changed_event).
+        for handler in list(self._base_id_change_handlers):
             self._schedule_handler(handler(base_id))
 
     def add_connection_state_changed_handler(self, handler):
@@ -159,7 +161,12 @@ class EnOceanGateway:
 
 
     def _fire_connection_state_changed_event(self, status):
-        for handler in self._connection_state_handlers:
+        # B1: iterate a SNAPSHOT. This runs on the bus/reconnect thread, but B1 now
+        # registers a connection-state handler per device entity, added/removed on
+        # the loop thread (entity add/remove/reload). Iterating the live list could
+        # let a concurrent mutation silently skip a handler, stranding that entity's
+        # availability until the next connection transition.
+        for handler in list(self._connection_state_handlers):
             self._schedule_handler(handler(status))
 
 
@@ -572,6 +579,17 @@ class EnOceanGateway:
     def is_auto_reconnect_enabled(self) -> str:
         """Return if auto connected is enabled."""
         return str(self._auto_reconnect)
+
+    @property
+    def is_connected(self) -> bool:
+        """Return whether the underlying bus/TCP connection is currently active. (B1)
+
+        Cheap, non-blocking flag read - used to seed entity availability without
+        waiting for the first connection-state notification."""
+        try:
+            return bool(self._bus.is_active())
+        except Exception:
+            return False
 
 
 def detect() -> list[str]:
