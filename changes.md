@@ -1,5 +1,12 @@
 # Changes and Feature List
 
+## Version 2.7.0 — Roadmap-Welle B (B3/AS1): Mehr-Tarif-Zähler funktionieren vollständig
+* **Mehr-Tarif-Zähler (`meter_tariffs: [1, 2, …]`) zeigen jetzt ALLE Tarife:** Bisher teilten sich mehrere Tarife desselben Zählers dieselbe interne ID (`unique_id`) — Home Assistant verwarf alle bis auf den ersten, ab Tarif 2 fehlte der Sensor **still**. Der Tarif ist jetzt Teil der `unique_id`, sodass jeder Tarif eine eigene Entity bekommt (Strom kumulativ, Gas/Wasser kumulativ + Durchfluss).
+* **Bestehende Entities bleiben erhalten — keine Migration nötig:** Der **erste** konfigurierte Tarif behält seine bisherige `unique_id` unverändert (Historie/Anpassungen bleiben erhalten); nur die zusätzlichen, zuvor verworfenen Tarife kommen als neue Entities dazu. Wer nur einen Tarif nutzt, merkt keinen Unterschied.
+* Der angezeigte Name trug den Tarif bereits („… (Tariff 2)"); jetzt ist auch die ID eindeutig.
+* Versehentlich doppelt angegebene Tarifwerte (`meter_tariffs: [1, 2, 2]`) werden bei der Konfigurationsprüfung dedupliziert (nicht abgelehnt), damit kein Tippfehler die Zähler-Konfiguration bricht.
+* Tests: 5 neue Tests (`test_sensor_meter_A5_12.py`); Suite **211 grün**. Adversarial reviewt (Backward-Kompatibilität bestätigt: erster Tarif behält seine ID unverändert).
+
 ## Version 2.6.0 — Roadmap-Welle B (B2): Migrations-Fundament (`async_migrate_entry`)
 * **Sauberes Versions-/Migrations-Gerüst für Config-Einträge:** Die Integration besitzt jetzt ein `async_migrate_entry` (Config-Entry-Version **1.2**). Home Assistant ruft es automatisch auf, wenn ein gespeicherter Eintrag älter ist, und aktualisiert ihn schonend — die Grundlage für alle künftigen `unique_id`-/Struktur-Migrationen (kommt in B3).
 * **Alt-Einträge erhalten die Doppel-Gateway-Absicherung nachträglich:** Vor v2.4.0 angelegte Gateways hatten noch keine eindeutige Config-Entry-ID (`unique_id`). Die Migration trägt sie jetzt nach (`eltako_gateway_<id>`), sodass auch bestehende Installationen vor versehentlichem doppelten Einrichten desselben Gateways geschützt sind (AF1).

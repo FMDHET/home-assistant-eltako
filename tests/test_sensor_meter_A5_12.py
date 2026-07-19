@@ -11,6 +11,7 @@ from homeassistant.const import Platform
 from tests.mocks import *
 from custom_components.eltako.sensor import (
     EltakoMeterSensor, SENSOR_DESC_ELECTRICITY_CURRENT, SENSOR_DESC_GAS_CURRENT,
+    SENSOR_DESC_ELECTRICITY_CUMULATIVE,
 )
 from eltakobus import AddressExpression
 from eltakobus.eep import EEP
@@ -56,6 +57,55 @@ class TestMeterSensor(unittest.TestCase):
         # learn bit 0 -> teach-in, must be ignored (data[3]=0x04: learn=0, data_type=1)
         s.value_changed(Regular4BSMessage(b'\x00\x00\x00\x01', 0x00, bytes([0x00, 0x00, 0x64, 0x04])))
         self.assertIsNone(s.native_value)
+
+
+class TestMeterTariffUniqueId(unittest.TestCase):
+    """AS1 (roadmap wave B): the tariff must be part of the meter unique_id, but the
+    FIRST configured tariff keeps the pre-fix plain id so the existing entity/history
+    is preserved (no registry migration); additional tariffs (previously dropped by a
+    unique_id collision) come up as distinct new entities."""
+
+    def _cumulative(self, tariff, tariff_in_id):
+        gw = GatewayMock(dev_id=123)
+        return EltakoMeterSensor(Platform.SENSOR, gw, AddressExpression.parse("00-00-00-01"),
+                                 "m", EEP.find("A5-12-01"), SENSOR_DESC_ELECTRICITY_CUMULATIVE,
+                                 tariff=tariff, tariff_in_id=tariff_in_id)
+
+    def test_first_tariff_keeps_plain_unique_id(self):
+        s = self._cumulative(tariff=0, tariff_in_id=False)
+        self.assertTrue(s.unique_id.endswith("electricity_cumulative"),
+                        f"first tariff must keep the plain id, got {s.unique_id}")
+        self.assertNotIn("tariff", s.unique_id, "no suffix on the first/backward-compatible tariff")
+
+    def test_additional_tariffs_get_distinct_unique_ids(self):
+        first = self._cumulative(tariff=0, tariff_in_id=False)   # config tariff 1
+        second = self._cumulative(tariff=1, tariff_in_id=True)   # config tariff 2
+        third = self._cumulative(tariff=2, tariff_in_id=True)    # config tariff 3
+        self.assertEqual(len({first.unique_id, second.unique_id, third.unique_id}), 3,
+                         "each tariff must have a distinct unique_id")
+        self.assertTrue(second.unique_id.endswith("electricity_cumulative_tariff_2"))
+        self.assertTrue(third.unique_id.endswith("electricity_cumulative_tariff_3"))
+
+    def test_entity_id_tracks_unique_id_per_tariff(self):
+        # entity_id derives from unique_id, so distinct ids -> distinct entities
+        first = self._cumulative(tariff=0, tariff_in_id=False)
+        second = self._cumulative(tariff=1, tariff_in_id=True)
+        self.assertNotEqual(first.entity_id, second.entity_id)
+
+    def test_name_still_carries_tariff(self):
+        s = self._cumulative(tariff=1, tariff_in_id=True)
+        self.assertIn("Tariff 2", s.name)
+
+    def test_duplicate_tariffs_are_deduped_by_schema(self):
+        # AS1: the per-tariff suffix is value-based, so a duplicate value would recreate
+        # a collision; the schema dedupes (order-preserving) instead of rejecting.
+        from custom_components.eltako.schema import SensorSchema
+        from custom_components.eltako.const import CONF_EEP, CONF_METER_TARIFFS
+        from homeassistant.const import CONF_ID
+        validated = SensorSchema.ENTITY_SCHEMA(
+            {CONF_ID: "00-00-00-01", CONF_EEP: "A5-12-01", CONF_METER_TARIFFS: [1, 2, 2, 1]})
+        self.assertEqual(validated[CONF_METER_TARIFFS], [1, 2],
+                         "duplicate tariff values must be deduped, order preserved")
 
 
 if __name__ == "__main__":
