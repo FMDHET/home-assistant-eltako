@@ -179,7 +179,7 @@ Konsolidiert aus dieser Analyse **plus** dem bestehenden Backlog (`KI-Optimierun
 | # | Maßnahme | Ref | Aufwand |
 |---|---|---|---|
 | B1 | ☑ **Availability** an Gateway-Verbindung koppeln (Basisklasse) ⚡ — **ERLEDIGT v2.5.0** (2026-07-19) | HA §3d | M |
-| B2 | `async_migrate_entry` + Entity-Registry-Migration etablieren (**Fundament für alle unique_id-Fixes**) | HA §3c | M |
+| B2 | ☑ `async_migrate_entry` + Config-Entry-Versionierung (1.2) etablieren + unique_id-Backfill (AF1) — **ERLEDIGT v2.6.0** (2026-07-19); Entity-Registry-Migrationen folgen in B3 | HA §3c | M |
 | B3 | unique_id-Backlog nach B2 ausrollen: Tarif in Zähler-Id (AS1), left/right-Diskriminator (AM3), VOC-Sprach-/Klassen-Id (AS2/AS3) | Backlog AS/AM | M |
 | B4 | `repairs`-Issue für Base-Id-/Gateway-Fehler (**AG1** sichtbar machen) + `diagnostics.py` | HA §4 | M |
 | B5 | `eltakobus_patches.py` (4 Lib-Bugs) + Drift-Guard-Test für `tcp2serial_hardened.run()` | §6 | S–M |
