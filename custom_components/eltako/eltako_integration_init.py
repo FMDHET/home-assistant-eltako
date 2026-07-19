@@ -16,7 +16,8 @@ from .virtual_network_gateway import VirtualNetworkGateway, VIRT_GW_PORT
 from .schema import CONFIG_SCHEMA
 from . import config_helpers
 from .gateway import *
-from .frontend.info_page_view import InfoPageView
+# N10: dead 'from .frontend.info_page_view import InfoPageView' removed - the view
+# was never registered (its panel/static registration is gone).
 
 LOG_PREFIX_INIT = "Eltako Integration Setup"
 
