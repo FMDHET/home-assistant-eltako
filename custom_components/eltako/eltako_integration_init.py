@@ -175,7 +175,11 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
     LOGGER.info(f"[{LOG_PREFIX_INIT}] Initializes Gateway Device '{gateway_description}'")
     gateway_name = gateway_config.get(CONF_NAME, None)  # from configuration
-    baud_rate= BAUD_RATE_DEVICE_TYPE_MAPPING[gateway_device_type]
+    # .get instead of []: some enum values (e.g. 'ftd14') are not serial gateways and
+    # have no baud rate -> clean error instead of KeyError at startup
+    baud_rate = BAUD_RATE_DEVICE_TYPE_MAPPING.get(gateway_device_type)
+    if baud_rate is None:
+        raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] Gateway type '{gateway_device_type}' (id: {gateway_id}) is not supported as a gateway.")
     port = gateway_config.get(CONF_GATEWAY_PORT, VIRT_GW_PORT if gateway_device_type == GatewayDeviceType.VirtualNetworkAdapter else 5100)
     auto_reconnect = gateway_config.get(CONF_GATEWAY_AUTO_RECONNECT, True)
     gateway_base_id = AddressExpression.parse(gateway_config[CONF_BASE_ID])

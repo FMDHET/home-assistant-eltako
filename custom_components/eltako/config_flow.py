@@ -172,7 +172,11 @@ class EltakoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 return False
 
         # check serial ports / usb
-        baud_rate = gateway.BAUD_RATE_DEVICE_TYPE_MAPPING[gateway_device_type]
+        baud_rate = gateway.BAUD_RATE_DEVICE_TYPE_MAPPING.get(gateway_device_type)
+        if baud_rate is None:
+            # e.g. 'ftd14' is a valid enum value but has no baud rate and is not a serial gateway
+            LOGGER.warning("[%s] Gateway type '%s' has no baud rate mapping and cannot be validated as a serial gateway.", LOGGER_PREFIX_CONFIG_FLOW, gateway_device_type)
+            return False
         path_is_valid = await self.hass.async_add_executor_job(
             gateway.validate_path, serial_path, baud_rate
         )
