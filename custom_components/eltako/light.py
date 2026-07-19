@@ -105,7 +105,11 @@ class EltakoDimmableLight(AbstractLightEntity):
         address, _ = self._sender_id
         
         if self._sender_eep == A5_38_08:
-            dimming = CentralCommandDimming(int(brightness / 255.0 * 100.0), 0, 1, 0, 0, 1)
+            # A-r2: round instead of truncate, and never send 0 for an ON command -
+            # HA brightness 1-2 truncated to dimming value 0, i.e. 'on' dimmed the
+            # light to 0/off (night-light automations).
+            dimming_value = max(1, round(brightness / 255.0 * 100.0)) if brightness > 0 else 0
+            dimming = CentralCommandDimming(dimming_value, 0, 1, 0, 0, 1)
             msg = A5_38_08(command=0x02, dimming=dimming).encode_message(address)
             self.send_message(msg)
 
@@ -203,7 +207,8 @@ class EltakoDimmableLight(AbstractLightEntity):
                     return
                     
                 if decoded.dimming.dimming_range == 0:
-                    self._attr_brightness = int((decoded.dimming.dimming_value / 100.0) * 255.0)
+                    # A-r2: round - truncation made every 255<->100 roundtrip drift one step down
+                    self._attr_brightness = round((decoded.dimming.dimming_value / 100.0) * 255.0)
                 elif decoded.dimming.dimming_range == 1:
                     self._attr_brightness = decoded.dimming.dimming_value
 

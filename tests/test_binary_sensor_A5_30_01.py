@@ -54,7 +54,11 @@ class TestBinarySensor_A5_30_01(unittest.TestCase):
 
         self.assertEqual(bs.is_on, False)
 
-        msg = Regular4BSMessage(b'\00\x00\x00\x01', 0x20, b'\FF\x92\x00\x0E')
+        # A-r2: was b'\FF\x92\x00\x0E' - '\F' is NOT an escape sequence, so the data
+        # was 6 bytes and the assertion only passed by accident (data[1]=0x46 by
+        # coincidence of the stray backslash bytes). Proper telegram: battery byte
+        # 0x46 (=70 < 121 -> low battery), learn bit set in data[3].
+        msg = Regular4BSMessage(b'\00\x00\x00\x01', 0x20, b'\x00\x46\x00\x0E')
         bs.value_changed(msg)
 
         self.assertEqual(bs.is_on, True)

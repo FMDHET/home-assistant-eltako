@@ -75,8 +75,10 @@ class EltakoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             if self.is_input_available(user_input):
                 if await self.validate_eltako_conf(user_input):
                     return self.create_eltako_entry(user_input)
-            
-                errors = {CONF_SERIAL_PATH: ERROR_INVALID_GATEWAY_PATH}
+
+                # A-r2: merge into the dict - later steps previously replaced the
+                # whole dict and hid this (the actual) error from the user
+                errors[CONF_SERIAL_PATH] = ERROR_INVALID_GATEWAY_PATH
 
         LOGGER.debug("[%s] Get data for gateway selection", LOGGER_PREFIX_CONFIG_FLOW)
 
@@ -89,8 +91,10 @@ class EltakoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         g_list = list([g for g in g_list_dict.values() if g not in self.hass.data[DATA_ELTAKO] and 'gateway_'+str(config_helpers.get_id_from_gateway_name(g)) not in self.hass.data[DATA_ELTAKO]])
         LOGGER.debug("[%s] Available gateways to be added: %s", LOGGER_PREFIX_CONFIG_FLOW, g_list)
         if len(g_list) == 0:
+            # A-r2: abort instead of rendering an un-submittable empty dropdown -
+            # without configured gateways the form could never be completed
             LOGGER.debug("[%s] No gateways are configured in the 'configuration.yaml'.", LOGGER_PREFIX_CONFIG_FLOW)
-            errors = {CONF_GATEWAY_DESCRIPTION: ERROR_NO_GATEWAY_CONFIGURATION_AVAILABLE}
+            return self.async_abort(reason=ABORT_NO_CONFIGURATION_AVAILABLE)
 
         # add manually added serial paths and ip addresses from configuration
         for g_id in g_list_dict.keys():
@@ -112,9 +116,14 @@ class EltakoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         LOGGER.debug("[%s] Available serial paths/IP addresses: %s", LOGGER_PREFIX_CONFIG_FLOW, serial_paths)
 
         if manual_setp or len(serial_paths) == 0:
-            LOGGER.debug("[%s] No usb port or any manually configured address available.", LOGGER_PREFIX_CONFIG_FLOW)
-            errors = {CONF_SERIAL_PATH: ERROR_NO_SERIAL_PATH_AVAILABLE}
-                
+            # A-r2: only report 'no serial path' when that is actually the situation
+            # and no more specific error (e.g. failed validation) is pending -
+            # previously this unconditionally clobbered the real error, and even
+            # appeared on the manual form's very first display.
+            if len(serial_paths) == 0 and not errors:
+                LOGGER.debug("[%s] No usb port or any manually configured address available.", LOGGER_PREFIX_CONFIG_FLOW)
+                errors[CONF_SERIAL_PATH] = ERROR_NO_SERIAL_PATH_AVAILABLE
+
             return self.async_show_form(
                 step_id="manual",
                 data_schema=vol.Schema({

@@ -16,8 +16,8 @@ from .gateway import GatewayDeviceType
 from homeassistant.components.binary_sensor import (
     DEVICE_CLASSES_SCHEMA as BINARY_SENSOR_DEVICE_CLASSES_SCHEMA,
 )
-from homeassistant.components.cover import (
-    DEVICE_CLASSES_SCHEMA as COVER_DEVICE_CLASSES_SCHEMA,
+from homeassistant.components.sensor import (
+    DEVICE_CLASSES_SCHEMA as SENSOR_DEVICE_CLASSES_SCHEMA,
 )
 from homeassistant.components.cover import (
     DEVICE_CLASSES_SCHEMA as COVER_DEVICE_CLASSES_SCHEMA,
@@ -187,7 +187,12 @@ class SensorSchema(EltakoPlatformSchema):
                 vol.Optional(CONF_LANGUAGE, default="en"): vol.In([v for v in LANGUAGE_ABBREVIATION]),
                 vol.Optional(CONF_VOC_TYPE_INDEXES, default=[0]): vol.All(cv.ensure_list, [vol.In([v.index for v in VOC_SubstancesType])]),
                 vol.Optional(CONF_METER_TARIFFS, default=DEFAULT_METER_TARIFFS): vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.Range(min=1, max=16))]),
-                vol.Optional(CONF_DEVICE_CLASS): BINARY_SENSOR_DEVICE_CLASSES_SCHEMA,
+                # A-r2: accept BOTH class sets. The value is consumed by the
+                # binary_sensor platform (dual entities created from the sensor:
+                # section, e.g. A5-07-01 occupancy), so binary classes are legit -
+                # but the copy-pasted binary-only schema rejected every valid
+                # SENSOR class like 'temperature', failing the whole config.
+                vol.Optional(CONF_DEVICE_CLASS): vol.Any(BINARY_SENSOR_DEVICE_CLASSES_SCHEMA, SENSOR_DEVICE_CLASSES_SCHEMA),
             }
         ),
     )
@@ -239,7 +244,10 @@ class ClimateSchema(EltakoPlatformSchema):
             vol.Required(CONF_ID): cv.matches_regex(CONF_ID_REGEX),
             vol.Required(CONF_EEP): vol.In([F6_02_01.eep_string, F6_02_02.eep_string]),
             vol.Optional(CONF_NAME, default=DEFAULT_COOLING_SENDER_NAME): cv.string,
-            vol.Optional(CONF_GATEWAY_ID, default=None): cv.matches_regex(CONF_ID_REGEX),
+            # A-r2: gateway_id is a numeric gateway id like everywhere else - the
+            # address-regex here rejected every legitimate integer value, making
+            # the option unusable (whole config failed validation).
+            vol.Optional(CONF_GATEWAY_ID, default=None): vol.Any(None, cv.positive_int),
         }),
     })
 

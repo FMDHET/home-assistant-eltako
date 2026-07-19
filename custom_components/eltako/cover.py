@@ -86,8 +86,12 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
         # LOGGER.debug(f"[cover {self.dev_id}] latest state: {latest_state.state}")
         # LOGGER.debug(f"[cover {self.dev_id}] latest state attributes: {latest_state.attributes}")
         try:
-            self._attr_current_cover_position = latest_state.attributes['current_position']
-            self._attr_current_cover_tilt_position = latest_state.attributes['current_tilt_position']
+            # A-r2: .get() - HA only stores current_tilt_position when tilt is
+            # configured; direct indexing raised KeyError for covers without
+            # time_tilts and the except wiped the already-restored position on
+            # EVERY restart.
+            self._attr_current_cover_position = latest_state.attributes.get('current_position')
+            self._attr_current_cover_tilt_position = latest_state.attributes.get('current_tilt_position')
 
             #if self._attr_current_cover_tilt_position == 0:
             #    self._attr_current_cover_tilt_position = 0
@@ -133,13 +137,16 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
     def open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
         if self._time_opens is not None:
-            time = self._time_opens + 1
+            # A-r2: clamp - schema allows time values up to 255 and the +1 made
+            # encode_message raise ValueError (byte must be in range(0, 256))
+            time = min(self._time_opens + 1, 255)
         else:
             time = 255
         
         address, _ = self._sender_id
-        
+
         if self._sender_eep == H5_3F_7F:
+            self._cancel_tilt_task_for_new_movement()   # A-r2: stray tilt STOP must not halt this move
             msg = H5_3F_7F(time, 0x01, 1).encode_message(address)
             self.send_message(msg)
 
@@ -159,13 +166,15 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
     def close_cover(self, **kwargs: Any) -> None:
         """Close cover."""
         if self._time_closes is not None:
-            time = self._time_closes + 1
+            # A-r2: clamp (see open_cover)
+            time = min(self._time_closes + 1, 255)
         else:
             time = 255
         
         address, _ = self._sender_id
-        
+
         if self._sender_eep == H5_3F_7F:
+            self._cancel_tilt_task_for_new_movement()   # A-r2
             msg = H5_3F_7F(time, 0x02, 1).encode_message(address)
             self.send_message(msg)
 
@@ -199,10 +208,10 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
             return
         elif position == 100:
             direction = "up"
-            time = self._time_opens + 1
+            time = min(self._time_opens + 1, 255)   # A-r2: clamp (see open_cover)
         elif position == 0:
             direction = "down"
-            time = self._time_closes + 1
+            time = min(self._time_closes + 1, 255)  # A-r2: clamp
         elif position > self._attr_current_cover_position:
             direction = "up"
             time = max(1,min(int(((position - self._attr_current_cover_position) / 100.0) * self._time_opens), 255))
@@ -217,7 +226,8 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
                 command = 0x01
             elif direction == "down":
                 command = 0x02
-            
+
+            self._cancel_tilt_task_for_new_movement()   # A-r2
             msg = H5_3F_7F(time, command, 1).encode_message(address)
             self.send_message(msg)
 
@@ -241,6 +251,7 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
         address, _ = self._sender_id
 
         if self._sender_eep == H5_3F_7F:
+            self._cancel_tilt_task_for_new_movement()   # A-r2: we send our own STOP below
             msg = H5_3F_7F(0, 0x00, 1).encode_message(address)
             self.send_message(msg)
         
@@ -288,6 +299,14 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
 
             ## is received when cover stops at the desired intermediate position
             ## if not close state is always open (close state should be reported with closed message above)
+            elif decoded.time is not None and decoded.direction is not None and (self._time_closes is None or self._time_opens is None):
+                # A-r2: without configured travel times the position cannot be computed,
+                # but the telegram still means the cover STOPPED - previously it was
+                # swallowed entirely and is_opening/is_closing stayed set forever.
+                self._attr_is_opening = False
+                self._attr_is_closing = False
+                self._attr_is_closed = False
+
             elif decoded.time is not None and decoded.direction is not None and self._time_closes is not None and self._time_opens is not None:
 
                 time_in_seconds = decoded.time / 10.0
@@ -382,12 +401,31 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
             await asyncio.sleep(sleeptime)
             self.send_message(H5_3F_7F(0, 0x00, 1).encode_message(address))
         except asyncio.CancelledError:
-            # ensure the cover does not keep moving when cancelled (new command / entity removed)
-            try:
-                self.send_message(H5_3F_7F(0, 0x00, 1).encode_message(address))
-            except Exception:
-                pass
+            # ensure the cover does not keep moving when cancelled (new command / entity removed).
+            # A-r2 exception: when a movement command (open/close/set_position/stop) superseded
+            # this tilt, that command already controls the actuator - sending our stop telegram
+            # afterwards would halt the NEW movement. The superseding path marks the task.
+            if not getattr(asyncio.current_task(), '_eltako_skip_stop_on_cancel', False):
+                try:
+                    self.send_message(H5_3F_7F(0, 0x00, 1).encode_message(address))
+                except Exception:
+                    pass
             raise
+
+    def _cancel_tilt_task_for_new_movement(self) -> None:
+        """Cancel a pending tilt task from the sync command paths (executor thread). (A-r2)
+
+        Previously only async_set_cover_tilt_position cancelled the task, so a
+        sleeping tilt task's delayed STOP telegram could halt a movement started
+        by open/close/set_position afterwards. The task is marked so its
+        cancel-handler does NOT emit a stop telegram (the new command takes over).
+        """
+        task = self._tilt_task
+        self._tilt_task = None
+        if task is not None and not task.done():
+            task._eltako_skip_stop_on_cancel = True
+            # task.cancel() must run on the event loop; sync covers run in the executor
+            self.hass.loop.call_soon_threadsafe(task.cancel)
 
     async def _cancel_tilt_task(self) -> None:
         # Cancel the running tilt task and await it so its stop-on-cancel telegram is flushed

@@ -137,7 +137,11 @@ class EltakoBinarySensor(AbstractBinarySensor):
             self._channel = None
 
         super().__init__(platform, gateway, dev_id, dev_name, dev_eep, self._channel)
-        self.invert_signal = invert_signal
+        # A1: coerce to bool. Sensors created from the `sensor:` config section pass
+        # None (SensorSchema has no invert_signal key) and every state assignment
+        # uses `invert_signal != <bool>` as XOR - with None both comparisons are True,
+        # so the entity was permanently 'on'.
+        self.invert_signal = bool(invert_signal)
         self._attr_device_class = device_class
 
         if device_class is None or device_class == '':
@@ -294,13 +298,22 @@ class EltakoBinarySensor(AbstractBinarySensor):
 
         elif self.dev_eep in [A5_07_01]:
             # LOGGER.debug("[Binary Sensor][%s] Received msg for processing eep %s telegram.", b2s(self.dev_id), self.dev_eep.eep_string)
+            # A4: ignore teach-in telegrams (LRN bit 0) like the A5-08-01/D5-00-01 branches do
+            if decoded.learn_button == 0:
+                return
 
-            event_data['pressed'] = decoded.pir_status == 1
+            # A3: pir_status is the RAW byte (0..255, occupancy = >=128); using the
+            # raw value made `pressed` almost never True. Use pir_status_on like the
+            # state assignment below.
+            event_data['pressed'] = decoded.pir_status_on == 1
 
             # != is XOR; parentheses required, chained comparison broke the inverted case
             self._attr_is_on = self.invert_signal != (decoded.pir_status_on == 1)
 
         elif self.dev_eep in [A5_30_01]:
+            # A4: ignore teach-in telegrams
+            if decoded.learn_button == 0:
+                return
 
             if self.description_key == "low_battery":
                 event_data['pressed'] = decoded.low_battery
@@ -311,6 +324,9 @@ class EltakoBinarySensor(AbstractBinarySensor):
 
 
         elif self.dev_eep in [A5_30_03]:
+            # A4: ignore teach-in telegrams
+            if decoded.learn_button == 0:
+                return
 
             if self.description_key == "0":
                 if decoded.digital_input_0:

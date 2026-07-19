@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "detect": {
+        "title": "Eltako-Gateway hinzufügen",
+        "description": "Gateway (aus configuration.yaml) und den zugehörigen seriellen Pfad bzw. die IP-Adresse auswählen.",
+        "data": {
+          "gateway_description": "EnOcean-Gateway",
+          "serial_path": "Serieller Port / IP-Adresse"
+        }
+      },
+      "manual": {
+        "title": "Eltako-Gateway hinzufügen (manueller Pfad)",
+        "description": "Gateway (aus configuration.yaml) auswählen und den seriellen Pfad bzw. die IP-Adresse manuell eingeben.",
+        "data": {
+          "gateway_description": "EnOcean-Gateway",
+          "serial_path": "Serieller Port / IP-Adresse"
+        }
+      }
+    },
+    "error": {
+      "invalid_gateway_path": "Für diesen Pfad wurde kein gültiges Gateway gefunden.",
+      "no_serial_path_available": "Kein serieller Pfad verfügbar. USB-Stecker neu verbinden."
+    },
+    "abort": {
+      "no_configuration_available": "Kein Gateway zum Hinzufügen verfügbar. Alle konfigurierten Gateways sind bereits eingerichtet."
+    }
+  }
+}

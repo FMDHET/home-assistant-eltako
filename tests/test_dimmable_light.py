@@ -77,7 +77,8 @@ class TestDimmableLight(unittest.TestCase):
 
         light.value_changed(dimmed_msg)
         self.assertEqual(light.is_on, True)
-        self.assertEqual(light.brightness, 114)
+        # A-r2: 45% of 255 = 114.75 -> now correctly rounded to 115 (was truncated to 114)
+        self.assertEqual(light.brightness, 115)
         self.assertEqual(light.state, 'on')
 
         light._attr_is_on = None
