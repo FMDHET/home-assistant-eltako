@@ -165,7 +165,7 @@ Stil beibehalten: **Pure-Unit, ohne echtes HA/Hardware** (direkte Instanziierung
 
 Konsolidiert aus dieser Analyse **plus** dem bestehenden Backlog (`KI-Optimierungen.md`: K/H/M/N erledigt; offen A-Serie AC/AM/AG/AS/AV/AF/AN + V3 BaseID). Reihenfolge nach **Nutzen/Aufwand** und **Hardware-Bedarf**. „⚡" = hoher Nutzer-Impact.
 
-### Welle A — Quick-Wins ohne Hardware (nächste Releases, klein & sicher)
+### Welle A — Quick-Wins ohne Hardware (nächste Releases, klein & sicher) — ☑ ERLEDIGT (v2.3.1 + v2.4.0, 2026-07-19)
 | # | Maßnahme | Ref | Aufwand |
 |---|---|---|---|
 | A1 | Ruff-Aufräumung: 29 ungenutzte Imports, 6 Variablen (inkl. `pushed_duration`-Prüfung), F811/F541 | §1.2 | S |

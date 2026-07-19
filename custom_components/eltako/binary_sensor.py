@@ -7,7 +7,7 @@ from eltakobus.eep import *
 
 from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
 from homeassistant import config_entries
-from homeassistant.const import CONF_DEVICE_CLASS
+from homeassistant.const import CONF_DEVICE_CLASS, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import DeviceInfo, EntityDescription
@@ -414,6 +414,7 @@ class EltakoBinarySensor(AbstractBinarySensor):
 
 class GatewayConnectionState(AbstractBinarySensor):
     """Protocols last time when message received"""
+    _attr_entity_category = EntityCategory.DIAGNOSTIC   # A3
 
     def __init__(self, platform: str, gateway: EnOceanGateway):
         key = "Gateway_Connection_State"

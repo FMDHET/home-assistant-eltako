@@ -22,10 +22,44 @@ class BusMock():
             'context': context
         })
 
+class FakeServiceRegistry():
+    """Minimal hass.services stand-in (A6: init/gateway service (de)registration)."""
+    def __init__(self):
+        self._services = {}
+    def async_register(self, domain, name, func, *a, **k):
+        self._services[(domain, name)] = func
+    def has_service(self, domain, name):
+        return (domain, name) in self._services
+    def async_remove(self, domain, name):
+        self._services.pop((domain, name), None)
+
+
+class FakeConfigEntries():
+    """Minimal hass.config_entries stand-in (A6: init setup/unload).
+
+    Set `forward_side_effect`/`unload_result` to drive error paths."""
+    def __init__(self):
+        self.forwarded = None
+        self.unloaded = None
+        self.forward_side_effect = None
+        self.unload_result = True
+    async def async_forward_entry_setups(self, entry, platforms):
+        if self.forward_side_effect is not None:
+            raise self.forward_side_effect
+        self.forwarded = list(platforms)
+        return True
+    async def async_unload_platforms(self, entry, platforms):
+        self.unloaded = list(platforms)
+        return self.unload_result
+
+
 class HassMock():
-        
-    def __init__(self) -> None:
+
+    def __init__(self, data: dict = None) -> None:
         self.bus = BusMock()
+        self.data = data if data is not None else {}
+        self.services = FakeServiceRegistry()
+        self.config_entries = FakeConfigEntries()
         # Python >= 3.12: get_event_loop() no longer creates a loop implicitly (RuntimeError on 3.14)
         try:
             self.loop = asyncio.get_event_loop()
@@ -33,13 +67,31 @@ class HassMock():
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
 
-    # def async_create_task(self, async_call):
-    #     asyncio.run( async_call )
-        
+    async def async_add_executor_job(self, func, *args):
+        # run synchronously so reconnect/validate_path/detect execute in tests
+        return func(*args)
+
+    def async_create_task(self, coro, *a, **k):
+        return self.loop.create_task(coro)
+
+    def create_task(self, coro, *a, **k):
+        return self.loop.create_task(coro)
+
+
 class ConfigEntryMock():
 
-    def __init__(self):
-        self.entry_id = "entity_id"
+    def __init__(self, data: dict = None, entry_id: str = "entity_id", domain=None, title="", unique_id=None):
+        self.entry_id = entry_id
+        self.data = data if data is not None else {}
+        self.domain = domain if domain is not None else DOMAIN
+        self.title = title
+        self.unique_id = unique_id
+        self.version = 1
+        self.minor_version = 1
+        self.state = None
+        self._on_unload = []
+    def async_on_unload(self, func):
+        self._on_unload.append(func)
 
 class EltakoBusMock():
 

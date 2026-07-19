@@ -10,7 +10,7 @@ from homeassistant.components.button import (
     ButtonDeviceClass,
     ButtonEntityDescription
 )
-from homeassistant.const import Platform
+from homeassistant.const import Platform, EntityCategory
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -77,6 +77,8 @@ async def async_setup_entry(
 
 
 class AbstractButton(EltakoEntity, ButtonEntity):
+
+    _attr_entity_category = EntityCategory.CONFIG   # A3: teach-in / reconnect / read-memory are config actions
 
     def load_value_initially(self, latest_state:State):
         pass

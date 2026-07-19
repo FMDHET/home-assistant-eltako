@@ -72,6 +72,13 @@ class EltakoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if self.is_input_available(user_input):
                 if await self.validate_eltako_conf(user_input):
+                    # AF1: one config entry per gateway id - prevents adding the same
+                    # gateway twice (which previously overwrote hass.data['gateway_<id>']
+                    # and let unload tear down the other entry).
+                    gw_id = config_helpers.get_id_from_gateway_name(user_input[CONF_GATEWAY_DESCRIPTION])
+                    if gw_id is not None:
+                        await self.async_set_unique_id(f"eltako_gateway_{gw_id}")
+                        self._abort_if_unique_id_configured()
                     return self.create_eltako_entry(user_input)
 
                 # A-r2: merge into the dict - later steps previously replaced the
