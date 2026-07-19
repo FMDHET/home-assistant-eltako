@@ -17,6 +17,7 @@ from .const import *
 from .virtual_network_gateway import VirtualNetworkGateway, VIRT_GW_PORT
 from .schema import CONFIG_SCHEMA
 from . import config_helpers
+from .eltakobus_patches import apply_eltakobus_patches
 from .gateway import *
 # N10: dead 'from .frontend.info_page_view import InfoPageView' removed - the view
 # was never registered (its panel/static registration is gone).
@@ -26,6 +27,9 @@ LOG_PREFIX_INIT = "Eltako Integration Setup"
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Eltako component."""
     LOGGER.info(f"[{LOG_PREFIX_INIT}] Initialize Home Assistant Eltako Integration: https://github.com/grimmpp/home-assistant-eltako")
+
+    # B5: patch known eltako14bus bugs before any telegram is encoded/decoded.
+    apply_eltakobus_patches()
 
     if DATA_ELTAKO not in hass.data:
         hass.data[DATA_ELTAKO] = {}
