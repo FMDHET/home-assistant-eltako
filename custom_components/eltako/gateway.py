@@ -15,14 +15,12 @@ from eltakobus.message import *
 from eltakobus.util import AddressExpression, b2s
 from eltakobus.eep import EEP
 from eltakobus.device import request_memory_of_all_devices
-from eltakobus import locking
 
 from esp2_gateway_adapter.esp3_serial_com import ESP3SerialCommunicator
 
 from .tcp2serial_hardened import HardenedTCP2SerialCommunicator
 
 from homeassistant.core import HomeAssistant
-from homeassistant.const import CONF_MAC
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, dispatcher_send
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceRegistry

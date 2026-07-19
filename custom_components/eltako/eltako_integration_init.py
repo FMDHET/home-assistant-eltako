@@ -5,10 +5,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers.dispatcher import dispatcher_connect
-from homeassistant.helpers.reload import async_reload_integration_platforms
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er, device_registry as dr, entity_platform as pl
+from homeassistant.helpers import device_registry as dr
 
 
 from .const import *

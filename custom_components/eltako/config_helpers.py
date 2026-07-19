@@ -5,7 +5,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.const import CONF_DEVICES, CONF_NAME, CONF_ID
 
-from eltakobus.util import AddressExpression, b2a, b2s
+from eltakobus.util import AddressExpression, b2s
 from eltakobus.eep import EEP
 
 from .const import *

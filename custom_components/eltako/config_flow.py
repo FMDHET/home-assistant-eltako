@@ -6,9 +6,7 @@ import voluptuous as vol
 import ipaddress
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_ID, CONF_NAME
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.selector import selector
 
 from . import gateway
 from . import config_helpers

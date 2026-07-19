@@ -16,7 +16,6 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers import entity_registry as er
 
 from . import config_helpers, get_gateway_from_hass, get_device_config_for_gateway
 from .config_helpers import DeviceConf

@@ -1,11 +1,10 @@
 """Representation of an Eltako device."""
-from datetime import datetime
 
-from eltakobus.message import ESP2Message, EltakoWrappedRPS, EltakoWrapped1BS, EltakoWrapped4BS, RPSMessage, Regular4BSMessage, Regular1BSMessage, prettify
+from eltakobus.message import ESP2Message, EltakoWrappedRPS, EltakoWrapped1BS, EltakoWrapped4BS, RPSMessage, Regular4BSMessage, Regular1BSMessage
 from eltakobus.util import AddressExpression, b2s
 from eltakobus.eep import EEP
 
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import State
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers import area_registry as ar, device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo

@@ -17,7 +17,7 @@ from .device import *
 from . import config_helpers 
 from .config_helpers import DeviceConf
 from .gateway import EnOceanGateway
-from .const import CONF_SENDER, CONF_TIME_CLOSES, CONF_TIME_OPENS, CONF_TIME_TILTS, DOMAIN, MANUFACTURER, LOGGER
+from .const import CONF_SENDER, CONF_TIME_CLOSES, CONF_TIME_OPENS, CONF_TIME_TILTS, LOGGER
 from . import get_gateway_from_hass, get_device_config_for_gateway
 import asyncio
 
@@ -118,7 +118,7 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
                 self._attr_is_closing = False
                 self._attr_is_closed = False
             
-        except Exception as e:
+        except Exception:
             self._attr_current_cover_position = None
             self._attr_current_cover_tilt_position = None
             self._attr_is_opening = None

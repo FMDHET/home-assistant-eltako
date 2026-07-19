@@ -1,5 +1,10 @@
 # Changes and Feature List
 
+## Version 2.3.1 — Aufräumen & Doku-Korrekturen (Roadmap-Welle A)
+* **Doku-Korrektur (wichtig):** In den Konfigurationsbeispielen war der Kühlmodus-Schlüssel als `switch-button` (Bindestrich) geschrieben — das Schema erwartet `switch_button` (Unterstrich). Wer das Beispiel kopiert hatte, dessen Kühlmodus-Taste wurde **stillschweigend ignoriert**. Korrigiert.
+* Doku aktualisiert: veralteter „nur ESP2"-Hinweis entfernt (ESP3/USB300/MGW-LAN werden unterstützt), Tippfehler `gam14`→`fam14`, veralteter „NEEDS TO BE REVISED"-Vermerk entfernt, neues `area:`-Feld dokumentiert.
+* Code-Hygiene: 29 ungenutzte Importe, 6 ungenutzte Variablen, eine Redefinition und ein leerer f-String entfernt (statische Analyse). Keine funktionale Änderung; Testsuite unverändert grün (171).
+
 ## Version 2.3.0 — Neue Features aus Branch-Konsolidierung (V1)
 Aus dem Branch-Inventar (V1) nach `main` überführte, ohne Hardware testbare Features:
 * **Geräte-Bereich (Area) aus YAML:** Jedes Gerät kann jetzt `area: Wohnzimmer` angeben — der Bereich wird bei Bedarf angelegt und dem Gerät zugewiesen. **Non-destruktiv:** eine manuell in Home Assistant gesetzte Zuordnung wird NICHT überschrieben (nur gesetzt, wenn das Gerät noch keinen Bereich hat). Gilt für alle Geräte-Plattformen.

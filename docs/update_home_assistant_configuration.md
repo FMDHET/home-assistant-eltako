@@ -34,12 +34,12 @@ eltako:
     fast_status_change: False   # True: Changes status in HA immediately without waiting for actuator response. Default: False
 
   # section 'gateway'
-  # Currently only devices based on ESP2 protocol are supported. In future ESP3 protocol shall be extended. 
-  # 
+  # Both ESP2 (FAM14, FGW14-USB, FAM-USB) and ESP3 (USB300, MGW-LAN, EUL/TCM515) gateways are supported.
+  #
   gateway:
   - id: 1                       # virtual id
     base_id: FF-AA-80-00        # Address which is used to send telegrams into wireless network. Mainly important for transceivers like FAM-USB
-    device_type: fgw14usb            # Supported gateways: gam14, fgw14usb, fam-usb
+    device_type: fgw14usb            # e.g. fam14, fgw14usb, fam-usb, enocean-usb300, mgw-lan, eul_lan (full list: GatewayDeviceType in const.py)
     devices:                    # list here all devices connected to this gateway
 
       # binary sensors can be switches, door or window contacts, ...
@@ -56,6 +56,8 @@ eltako:
       - id: 00-00-00-01           # address (HEX) 
         eep: M5-38-08             # Supported EEP telegrams: A5-38-08, M5-38-08
         name: FSR14_4x - 1        # optional: display name
+        area: Living room         # optional (v2.3.0+): assigns the HA area. Created if missing.
+                                  # Non-destructive: a manual area move in the HA UI is never overwritten.
         sender:                   # virtual switch in Home Assistant.
           id: 00-00-B0-01         # every sender needs it's own address which needs to be entered in PCT14 / actuator with function group 51 for FSR14.
           eep: A5-38-08   
@@ -105,7 +107,7 @@ eltako:
         cooling_mode:               # optional
           sensor:
             id: ff-bb-0a-1b         # usually a binary_sensor like a rocker switch which must be defined in binary_sensors. Eltako uses a physical switch to detect if the cooling mode of the e.g. heat pump is activated.
-            switch-button: 0x50     #optional and only for rocker switch. contacts don't need this information. button of the switch in (HEX) 
+            switch_button: 0x50     #optional and only for rocker switch. contacts don't need this information. button of the switch in (HEX) 
 
 
 logger:

@@ -21,7 +21,6 @@ from .gateway import EnOceanGateway
 from .schema import CONF_EEP_SUPPORTED_BINARY_SENSOR
 from . import config_helpers, get_gateway_from_hass, get_device_config_for_gateway
 
-import json
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -175,8 +174,8 @@ class EltakoBinarySensor(AbstractBinarySensor):
             # no json.dumps: runs per telegram, %s defers str() until debug is actually enabled
             LOGGER.debug("decoded : %s", decoded.__dict__)
             # LOGGER.debug("msg : %s, data: %s", type(msg), msg.data)
-        except Exception as e:
-            LOGGER.warning("[%s %s] Could not decode message for eep %s does not fit to message type %s (org %s)", 
+        except Exception:
+            LOGGER.warning("[%s %s] Could not decode message for eep %s does not fit to message type %s (org %s)",
                             Platform.BINARY_SENSOR, str(self.dev_id), self.dev_eep.eep_string, type(msg).__name__, str(msg.org) )
             return
 
@@ -217,7 +216,6 @@ class EltakoBinarySensor(AbstractBinarySensor):
 
             push_telegram_received_time = telegram_received_time
             release_telegram_received_time = -1
-            pushed_duration = -1
 
             # Data is only available when button is pressed. 
             # Button cannot be identified when releasing it.
@@ -445,7 +443,7 @@ class GatewayConnectionState(AbstractBinarySensor):
     async def async_value_changed(self, connected:bool) -> None:
         try:
             self.value_changed(connected)
-        except AttributeError as e:
+        except AttributeError:
             # Home Assistant is not ready yet
             pass
     

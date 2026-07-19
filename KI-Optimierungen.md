@@ -410,3 +410,5 @@ Ergebnis in **`ANALYSE-UND-ROADMAP.md`** (eigene Datei): Messungen (Coverage 53 
 | 2026-07-19 | **Agenda Runde 3** (Abschnitt 7): V1 Branch-Konsolidierung (6 ungemergte Branches inventarisiert), V2 Komplettanalyse+Roadmap, V3 BaseID-Schreiben (Schreibpfad fehlt in beiden Libs, CO_WR_IDBASE-Limit ~10×) | Reihenfolge V1→V2→V3 festgelegt |
 | 2026-07-19 | **V1.1/1.2**: 6 Branches getriagt (4 verwerfen/überholt, version2 = 9 Features F1–F9); eltako14bus 0.0.82 als kompatibel-aber-bugfrei-lose geprüft | Triage-Tabelle in Abschnitt 7 |
 | 2026-07-19 | **V1.3a**: F1 (area, non-destruktiv) + F9 (temp_unit optional) + Doku-Fix nach main portiert; 6 neue Tests | 169 Tests grün, **Release v2.3.0** |
+| 2026-07-19 | **V2**: Komplettanalyse → `ANALYSE-UND-ROADMAP.md` (Coverage 53%, ruff, 5 Agenten, 5-Wellen-Roadmap) | Analyse-Deliverable |
+| 2026-07-19 | **Roadmap-Welle A** (Start): ruff-Cleanup (31+6 Funde), Doku-Fixes (D4 switch_button ⚡, D1/D2/D3) | 171 Tests grün, ruff F-clean, **Release v2.3.1** |

@@ -12,13 +12,10 @@ from eltakobus.serial import RS485SerialInterfaceV2
 
 from homeassistant.components import zeroconf
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.dispatcher import async_dispatcher_connect, dispatcher_send
-from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.config_entries import ConfigEntry
 
 from .const import *
-from . import config_helpers
 from .gateway import EnOceanGateway, ELTAKO_GLOBAL_EVENT_BUS_ID
 
 VIRT_GW_PORT = 12345
@@ -119,7 +116,7 @@ class VirtualNetworkGateway(EnOceanGateway):
     def convert_bus_address_to_external_address(self, gateway, msg):
         address = msg.body[6:10]
         if address[0] == 0 and address[1] == 0:
-            LOGGER.debug(f"TODO: create external id")
+            LOGGER.debug("TODO: create external id")
         
         return msg
 

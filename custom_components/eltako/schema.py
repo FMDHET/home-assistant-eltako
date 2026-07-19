@@ -4,7 +4,6 @@ from abc import ABC
 from typing import ClassVar
 import voluptuous as vol
 
-from numbers import Number, Real
 import homeassistant.helpers.config_validation as cv
 
 
@@ -26,7 +25,6 @@ from homeassistant.const import (
     CONF_DEVICE_CLASS,
     CONF_ID,
     CONF_NAME,
-    CONF_DEVICE,
     CONF_DEVICES,
     Platform,
     CONF_TEMPERATURE_UNIT,

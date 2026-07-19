@@ -1,7 +1,6 @@
 """Support for Eltako sensors."""
 from __future__ import annotations
 
-from typing import List
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -16,7 +15,6 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    PERCENTAGE,
     STATE_CLOSED,
     STATE_OPEN,
     LIGHT_LUX,
@@ -37,7 +35,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers import entity_registry as er
 
 from .device import *
 from .config_helpers import *
@@ -936,7 +933,7 @@ class GatewayLastReceivedMessage(EltakoSensor):
     async def async_value_changed(self, value: datetime) -> None:
         try:
             self.value_changed(value)
-        except AttributeError as e:
+        except AttributeError:
             # Home Assistant not ready yet
             pass
 
@@ -989,7 +986,7 @@ class GatewayReceivedMessagesInActiveSession(EltakoSensor):
     async def async_value_changed(self, value: int) -> None:
         try:
             self.value_changed(value)
-        except AttributeError as e:
+        except AttributeError:
             # Home Assistant not ready yet
             pass
 

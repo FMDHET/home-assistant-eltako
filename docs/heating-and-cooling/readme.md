@@ -1,6 +1,4 @@
 
-# NEED TO BE REVISED!!!
-
 # Heating and Cooling -  Setup and Configuration
 
 This documentation is about how to control a heating like a heat pump which is able to heat up in winter and to cool down in summer.
@@ -119,7 +117,7 @@ eltako:
           cooling_mode:               # Optional part - cooling mode
             sensor:                   # Rocker switch (3) must be specified in binary_sensor
               id: FF-DD-0A-1B         # Address of switch (3)
-              switch-button: 0x50     # In case of switch button needs to be specified.
+              switch_button: 0x50     # In case of switch button needs to be specified.
                                       # for rocker switches only
 ```
 
