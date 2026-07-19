@@ -219,7 +219,10 @@ gateway:
         filename = os.path.join(os.getcwd(), 'ha.yaml')
         with open(filename, 'r') as file:
             config = yaml.safe_load(file)
-            CONFIG_SCHEMA(config[str(DOMAIN)])
+            # CONFIG_SCHEMA expects the full {eltako: {...}} dict. Passing config[DOMAIN]
+            # (the inner dict) meant the 'eltako' key was absent, so the gateways were
+            # never actually validated - a device_type typo in ha.yaml slipped through.
+            CONFIG_SCHEMA(config)
 
         self.assertTrue(config_helpers.config_check_gateway(config[DOMAIN]))
 

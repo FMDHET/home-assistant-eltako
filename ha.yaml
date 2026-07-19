@@ -4,7 +4,7 @@ eltako:
     show_dev_id_in_dev_name: True
   gateway:
   - id: 0
-    device_type: esp2-netowrk-reverse-bridge
+    device_type: esp2-network-reverse-bridge
     address: homeassistant.local
     port: 12345
 
