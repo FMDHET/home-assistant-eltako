@@ -1048,10 +1048,11 @@ class GatewayReceivedMessagesInActiveSession(EltakoSensor):
                             key="Received Messages per Session",
                             name="Received Messages per Session",
                             state_class=SensorStateClass.TOTAL_INCREASING,
-                            # device_class=SensorDeviceClass.VOLUME,
-                            # native_unit_of_measurement="Messages", # => raises error message
-                            unit_of_measurement="count",
-                            suggested_unit_of_measurement="Messages",
+                            # R3-03: a plain counter needs no unit. suggested_unit_of_measurement=
+                            # "Messages" made SensorEntity._is_valid_suggested_unit raise ValueError
+                            # on add (the entity was silently never created); the legacy
+                            # unit_of_measurement="count" next to it was dead (SensorEntity never
+                            # reads it). Both removed - state_class + icon are enough.
                             icon="mdi:chart-line",
                         )
         )
