@@ -72,6 +72,17 @@ class VirtualNetworkGateway(EnOceanGateway):
         return GATEWAY_DEFAULT_NAME + " - " + self.dev_type.upper()
 
 
+    def _current_connection_state(self) -> bool:
+        # R3-16: the VNG has no started bus (the base builds a dummy RS485 bus that is never
+        # started); its real "connected" state is whether the TCP server is running. Without
+        # this override, is_connected and the "Connected" sensor reported the dummy bus's
+        # is_active() == False permanently, even while clients were being served.
+        # getattr guard: the base __init__ registers connection-state handlers (which
+        # evaluate this) BEFORE VirtualNetworkGateway.__init__ assigns self._running.
+        running = getattr(self, "_running", None)
+        return running is not None and running.is_set()
+
+
     def get_service_info(self, hostname:str, ip_address:str):
         info = ServiceInfo(
             "_bsc-sc-socket._tcp.local.",

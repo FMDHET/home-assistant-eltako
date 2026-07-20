@@ -77,6 +77,17 @@ SENSOR_TYPE_WEATHER_STATION_ILLUMINANCE_EAST = "weather_station_illuminance_east
 SENSOR_TYPE_ILLUMINANCE = "illuminance"
 
 
+def _is_4bs_teach_in(msg: ESP2Message) -> bool:
+    """R3-07: True for a 4BS LRN teach-in telegram (EnOcean DB0.3 == 0).
+
+    All Eltako A5-xx sensors are 4BS. A teach-in carries no measurement; decoded as
+    data it publishes garbage (e.g. -15.8 C / 6 % for A5-04-02) that spikes long-term
+    statistics and can trip automations (frost protection, ...). Data telegrams set the
+    LRN bit (data[3] & 0x08); teach-ins clear it. Equivalent to `decoded.learn_button
+    != 1` for EEPs that expose it, but works uniformly for those that do not."""
+    return len(msg.data) > 3 and not (msg.data[3] & 0x08)
+
+
 # M7: HA requires EntityDescription subclasses to be frozen (kw_only matches the
 # base class); the non-frozen form only worked via a transitional HA metaclass
 # and would raise TypeError at module import with future HA versions.
@@ -479,7 +490,11 @@ async def async_setup_entry(
     entities.append(GatewayLastReceivedMessage(platform, gateway))
     entities.append(GatewayReceivedMessagesInActiveSession(platform, gateway))
 
-    validate_actuators_dev_and_sender_id(entities)
+    # R3-21: the sensor platform has no actuators - only (decentralized) radio sensors and
+    # gateway info fields. Running actuator dev_id/sender_id validation here produced a
+    # spurious WARNING per sensor on every start (weather station, FT55, gateway fields with
+    # dev_id 00-00-00-00). Skip it, exactly like the binary_sensor platform does. This pairs
+    # with the R3-12 fix, which would otherwise have made the sender-id spam worse.
     log_entities_to_be_added(entities, platform)
     async_add_entities(entities)
 
@@ -560,7 +575,10 @@ class EltakoPirSensor(EltakoSensor):
         except Exception as e:
             LOGGER.warning("[Motion Sensor %s] Could not decode message: %s", self.dev_id, str(e))
             return
-        
+
+        if _is_4bs_teach_in(msg):   # R3-07: ignore LRN teach-in telegrams
+            return
+
         self._attr_native_value = decoded.pir_status
 
         self.schedule_update_ha_state()
@@ -579,6 +597,9 @@ class EltakoVoltageSensor(EltakoSensor):
             decoded:A5_07_01 = self.dev_eep.decode_message(msg)
         except Exception as e:
             LOGGER.warning("[Voltage Sensor %s] Could not decode message: %s", self.dev_id, str(e))
+            return
+
+        if _is_4bs_teach_in(msg):   # R3-07: ignore LRN teach-in telegrams
             return
 
         # A-r2: A5-07-01 declares in data[3] bit 0 whether the voltage field is valid;
@@ -780,7 +801,10 @@ class EltakoTemperatureSensor(EltakoSensor):
         except Exception as e:
             LOGGER.warning("[Temperature Sensor %s] Could not decode message: %s", self.dev_id, str(e))
             return
-        
+
+        if _is_4bs_teach_in(msg):   # R3-07: ignore LRN teach-in telegrams
+            return
+
         self._attr_native_value = decoded.current_temperature
 
         self.schedule_update_ha_state()
@@ -802,7 +826,10 @@ class EltakoIlluminationSensor(EltakoSensor):
         except Exception as e:
             LOGGER.warning("[Illumination Sensor %s] Could not decode message: %s", self.dev_id, str(e))
             return
-        
+
+        if _is_4bs_teach_in(msg):   # R3-07: ignore LRN teach-in telegrams
+            return
+
         self._attr_native_value = decoded.illumination
 
         self.schedule_update_ha_state()
@@ -821,6 +848,8 @@ class EltakoTwilightSensor(EltakoSensor):
         except Exception as e:
             LOGGER.warning("[Twilight Sensor %s] Could not decode message: %s", self.dev_id, str(e))
             return
+        if _is_4bs_teach_in(msg):   # R3-07: ignore LRN teach-in telegrams
+            return
         self._attr_native_value = decoded.twilight
         self.schedule_update_ha_state()
 
@@ -837,6 +866,8 @@ class EltakoDaylightSensor(EltakoSensor):
             decoded = self.dev_eep.decode_message(msg)
         except Exception as e:
             LOGGER.warning("[Daylight Sensor %s] Could not decode message: %s", self.dev_id, str(e))
+            return
+        if _is_4bs_teach_in(msg):   # R3-07: ignore LRN teach-in telegrams
             return
         self._attr_native_value = decoded.day_light
         self.schedule_update_ha_state()
@@ -860,7 +891,10 @@ class EltakoBatteryVoltageSensor(EltakoSensor):
         except Exception as e:
             LOGGER.warning("[Battery Voltage Sensor %s] Could not decode message: %s", self.dev_id, str(e))
             return
-        
+
+        if _is_4bs_teach_in(msg):   # R3-07: ignore LRN teach-in telegrams
+            return
+
         self._attr_native_value = decoded.supply_voltage
 
         self.schedule_update_ha_state()
@@ -887,7 +921,10 @@ class EltakoTargetTemperatureSensor(EltakoSensor):
         except Exception as e:
             LOGGER.warning("[Target Temperature Sensor %s] Could not decode message: %s", self.dev_id, str(e))
             return
-        
+
+        if _is_4bs_teach_in(msg):   # R3-07: ignore LRN teach-in telegrams
+            return
+
         self._attr_native_value = round(2 * decoded.target_temperature, 0) / 2
 
         self.schedule_update_ha_state()
@@ -914,7 +951,10 @@ class EltakoHumiditySensor(EltakoSensor):
         except Exception as e:
             LOGGER.warning("[Humidity Sensor %s] Could not decode message: %s", self.dev_id, str(e))
             return
-        
+
+        if _is_4bs_teach_in(msg):   # R3-07: ignore LRN teach-in telegrams
+            return
+
         self._attr_native_value = decoded.humidity
 
         self.schedule_update_ha_state()

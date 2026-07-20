@@ -200,5 +200,27 @@ class TestVirtualNetworkGateway(unittest.TestCase):
             vng.stop_tcp_server()
 
 
+class TestVngConnectionState(unittest.TestCase):
+    """R3-16: is_connected / the "Connected" sensor must reflect the TCP server's running
+    state (_running), not the never-started dummy bus (whose is_active() is always False)."""
+
+    def test_is_connected_tracks_running_not_dummy_bus(self):
+        vng = VNGMock(get_free_port())
+
+        # not running yet -> not connected
+        self.assertFalse(vng.is_connected)
+        self.assertFalse(vng._current_connection_state())
+
+        # server running -> connected. The VNG override reports _running directly (it never
+        # reads a bus), which is exactly the fix: the base implementation would have reported
+        # the never-started dummy bus's is_active() == False permanently.
+        vng._running.set()
+        self.assertTrue(vng.is_connected)
+        self.assertTrue(vng._current_connection_state())
+
+        vng._running.clear()
+        self.assertFalse(vng.is_connected)
+
+
 if __name__ == "__main__":
     unittest.main()

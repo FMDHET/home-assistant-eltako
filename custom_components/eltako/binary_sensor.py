@@ -82,6 +82,13 @@ async def async_setup_entry(
                     LOGGER.warning("[%s] Could not load configuration for platform_id %s", platform, platform_id)
                     LOGGER.critical(e, exc_info=True)
 
+    # R3-20: a device listed in BOTH `binary_sensor:` and `sensor:` (a documented pattern,
+    # e.g. F6-10-00) is scanned by both passes above and yields two binary-sensor entities
+    # with the SAME unique_id -> HA rejects the second with a "does not generate unique IDs"
+    # error, and which one survives is order-dependent. Dedupe by unique_id, keeping the first
+    # occurrence (the binary_sensor section is iterated first, so it wins).
+    entities = dedupe_entities_by_unique_id(entities, platform)
+
     # is connection active sensor for gateway (serial connection)
     entities.append(GatewayConnectionState(platform, gateway))
 
@@ -89,7 +96,24 @@ async def async_setup_entry(
     log_entities_to_be_added(entities, platform)
     async_add_entities(entities)
 
-    
+
+def dedupe_entities_by_unique_id(entities: list, platform) -> list:
+    """R3-20: drop entities whose unique_id already appeared, keeping the first occurrence.
+
+    The binary_sensor platform scans both the `binary_sensor:` and `sensor:` config sections
+    (binary_sensor first). A device listed in both would otherwise yield two entities with the
+    same unique_id, and HA rejects the second with a 'does not generate unique IDs' error."""
+    seen_unique_ids = set()
+    deduped = []
+    for entity in entities:
+        if entity.unique_id in seen_unique_ids:
+            LOGGER.debug("[%s] Skipping duplicate entity %s (listed under both binary_sensor and sensor).", platform, entity.unique_id)
+            continue
+        seen_unique_ids.add(entity.unique_id)
+        deduped.append(entity)
+    return deduped
+
+
 class AbstractBinarySensor(EltakoEntity, RestoreEntity, BinarySensorEntity):
 
     def load_value_initially(self, latest_state:State):
@@ -154,7 +178,13 @@ class EltakoBinarySensor(AbstractBinarySensor):
                 self._attr_device_class = BinarySensorDeviceClass.WINDOW
             if dev_eep in [F6_10_00]:
                 self._attr_device_class = BinarySensorDeviceClass.WINDOW
-            
+
+        # R3-11: the A5-30-01 "Low Battery" entity is a battery diagnostic; force the BATTERY
+        # device_class regardless of the configured device_class (which belongs to the paired
+        # contact entity, not the battery one).
+        if description is not None and description.key == "low_battery":
+            self._attr_device_class = BinarySensorDeviceClass.BATTERY
+
 
     def value_changed(self, msg: ESP2Message):
         """Fire an event with the data that have changed.
@@ -256,15 +286,13 @@ class EltakoBinarySensor(AbstractBinarySensor):
         
         # switch / single button
         elif self.dev_eep in [F6_01_01]:
-
-            # extend event data
+            # R3-09: no early return - fall through to the shared fire block below so the
+            # button event actually fires (incl. push/release + push-duration bookkeeping).
+            # The old return skipped hass.bus.fire entirely, so the "Event Id" field that
+            # sensor.py creates for F6-01-01 never produced an event. pressed_buttons stays
+            # empty -> only the base event fires, no button-specific one.
             event_data['pressed'] = decoded.button_pushed
-                
-            # Show status change in HA. It will only for the moment when the button is pushed down.
-            self._attr_is_on = self.invert_signal != ( decoded.button_pushed )
-            self.schedule_update_ha_state()
-
-            return
+            self._attr_is_on = self.invert_signal != decoded.button_pushed
 
         elif self.dev_eep in [F6_10_00]:
             # LOGGER.debug("[Binary Sensor][%s] Received msg for processing eep %s telegram.", b2s(self.dev_id), self.dev_eep.eep_string)
@@ -317,11 +345,14 @@ class EltakoBinarySensor(AbstractBinarySensor):
                 return
 
             if self.description_key == "low_battery":
+                # R3-11: never invert the battery alarm with the contact's invert_signal
+                # (that reported ON at full battery, so the low-battery notification never
+                # fired). device_class BATTERY is forced in __init__.
                 event_data['pressed'] = decoded.low_battery
-                self._attr_is_on = self.invert_signal != decoded.low_battery
+                self._attr_is_on = decoded.low_battery
             else:
-                event_data['pressed'] = decoded._contact_closed
-                self._attr_is_on = self.invert_signal != decoded._contact_closed
+                event_data['pressed'] = decoded.contact_closed
+                self._attr_is_on = self.invert_signal != decoded.contact_closed
 
 
         elif self.dev_eep in [A5_30_03]:
@@ -357,7 +388,8 @@ class EltakoBinarySensor(AbstractBinarySensor):
                 if decoded.status_of_wake:
                     event_data['pressed_buttons'] = [self.description_key]
                     event_data['pressed'] = True
-                self._attr_is_on = self.invert_signal != decoded.status_of_wake
+                # R3-11: "Status of Wake" is a status flag, not a contact - do not invert it.
+                self._attr_is_on = bool(decoded.status_of_wake)
             else:
                 # do not raise: an exception inside value_changed would abort message processing (M6)
                 LOGGER.warning("[%s %s] EEP %s: Unknown description key '%s' for A5-30-03.", Platform.BINARY_SENSOR, str(self.dev_id), A5_30_03.eep_string, str(self.description_key))

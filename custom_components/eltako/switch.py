@@ -149,6 +149,13 @@ class EltakoSwitch(EltakoEntity, SwitchEntity, RestoreEntity):
 
     def value_changed(self, msg: ESP2Message):
         """Update the internal state of the switch."""
+        # R3-13: the switch EEPs (M5-38-08, F6-02-xx) are all RPS (org 0x05). Filter other
+        # RORGs BEFORE decoding, so the documented FSR14M-2x dual config (same address listed
+        # as switch AND A5-12-01 meter, org 0x07) no longer raises WrongOrgError and logs a
+        # WARNING per telegram. Mirrors the M4 org filter in EltakoDimmableLight.
+        if msg.org != 0x05:
+            LOGGER.debug("[%s %s] Ignoring non-RPS telegram (org=%s).", Platform.SWITCH, str(self.dev_id), msg.org)
+            return
         try:
             decoded = self.dev_eep.decode_message(msg)
         except Exception as e:

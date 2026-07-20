@@ -5,7 +5,7 @@ PINNED library from within the integration rather than forking it. apply_eltakob
 is called once from async_setup and is idempotent. See KI-Optimierungen.md section 3b for
 the bug catalogue.
 
-Only two bugs are patched here, both verifiable WITHOUT a device:
+Three bugs are patched here, all verifiable WITHOUT a device:
   * DefaultEnum.__repr__  - purely cosmetic UnboundLocalError when an enum value is
     formatted (no telegram/control-flow impact).
   * A5-30-01/-03 encode   - the learn (LRN) flag is written into the wrong bit. This
@@ -13,10 +13,15 @@ Only two bugs are patched here, both verifiable WITHOUT a device:
     spec-unambiguous: the EnOcean 4BS LRN bit is DB0.3 and the library's own
     decode_message already reads it there, so the patch only RELOCATES the same flag
     to the position both the spec and the decoder expect - no device needed to verify.
-Two further documented bugs change VALUE/OFFSET semantics of telegrams sent to real
+  * A5-04-03 decode (R3-08) - decode_message computes the raw temperature as
+    ``data[1] * 265 + data[2]`` (a typo for ``* 256``). It offsets the DECODED
+    temperature by +0.70 C per MSB count with a discontinuity at every 256 boundary.
+    Decode-only - no telegram is sent - so the correction is verifiable without a
+    device (this is distinct from the A5-04-03 ENCODE offset, still deferred).
+One further documented bug changes VALUE/OFFSET semantics of telegrams sent to real
 hardware / the climate display (A5-04-03 encode offset, A5-10-03 target-temp +8 offset)
-and are deferred to the hardware session - the correct scaling must be verified against
-a device, so patching them blind would be guesswork.
+and is deferred to the hardware session - the correct scaling must be verified against
+a device, so patching it blind would be guesswork.
 
 Every applied patch has a drift-guard test (tests/test_eltakobus_patches.py) that asserts
 the pinned library STILL exhibits the original bug (via the saved original in _ORIGINALS),
@@ -40,8 +45,9 @@ def apply_eltakobus_patches() -> None:
     try:
         _patch_default_enum_repr()
         _patch_a5_30_learn_bit_encode()
+        _patch_a5_04_03_decode_temperature()
         _applied = True
-        LOGGER.debug("Applied eltakobus in-integration patches (DefaultEnum repr, A5-30 learn-bit encode).")
+        LOGGER.debug("Applied eltakobus in-integration patches (DefaultEnum repr, A5-30 learn-bit encode, A5-04-03 decode temp).")
     except Exception:
         # A library change could move or rename the patched symbols. Never let a patch
         # failure block integration setup - the drift-guard tests catch the change.
@@ -98,3 +104,27 @@ def _patch_a5_30_learn_bit_encode() -> None:
             return encode_message
 
         cls.encode_message = _make(orig)
+
+
+def _patch_a5_04_03_decode_temperature() -> None:
+    """Bug (R3-08): A5-04-03 decode_message computes ``raw_temp = data[1] * 265 + data[2]``
+    - a typo for ``* 256`` - so the decoded temperature is offset (+0.70 C per MSB count,
+    with a jump at every 256 boundary). Decode-only, so verifiable without a device.
+
+    Wrap decode_message to recompute ONLY the temperature with the correct * 256, rebuilding
+    the result from the original's public fields so it survives unrelated changes elsewhere
+    in the method body."""
+    from eltakobus.eep import A5_04_03
+    key = "A5_04_03.decode_message"
+    if key in _ORIGINALS:   # already patched (idempotent - never wrap the wrapper)
+        return
+    orig = A5_04_03.decode_message   # bound classmethod of the pinned library
+    _ORIGINALS[key] = orig
+
+    def decode_message(cls, msg):
+        obj = orig(msg)   # original (buggy) decode - carries humidity/learn_button/telegram_type
+        raw_temp = msg.data[1] * 256 + msg.data[2]   # R3-08: * 256, not * 265
+        temperature = ((raw_temp / 1024) * (cls.temp_max - cls.temp_min)) + cls.temp_min
+        return cls(temperature, obj.humidity, obj.learn_button, obj.telegram_type)
+
+    A5_04_03.decode_message = classmethod(decode_message)

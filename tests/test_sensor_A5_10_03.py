@@ -14,7 +14,10 @@ Entity.schedule_update_ha_state = mock.Mock(return_value=None)
 
 class TestSensor_A5_10_03(unittest.TestCase):
     
-    msg = Regular4BSMessage (address=b'\xFF\xFF\x00\x80', data=b'\x00\x80\x76\x00', status=0x00)
+    # R3-07: DB0.3 (data[3] bit 3) is the 4BS LRN bit and MUST be set on a DATA telegram
+    # (teach-ins clear it). The old fixture left data[3]=0x00, i.e. a teach-in per spec;
+    # A5-10-03 decode ignores data[3], so setting the LRN bit does not change the values.
+    msg = Regular4BSMessage (address=b'\xFF\xFF\x00\x80', data=b'\x00\x80\x76\x08', status=0x00)
 
     def create_temp_sensor(self) -> EltakoTemperatureSensor:
         gateway = GatewayMock()

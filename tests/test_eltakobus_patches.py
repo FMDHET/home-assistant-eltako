@@ -8,7 +8,7 @@ Two kinds of test per patch:
 import unittest
 
 from custom_components.eltako.eltakobus_patches import apply_eltakobus_patches, _ORIGINALS
-from eltakobus.eep import A5_10_06, A5_30_01, A5_30_03
+from eltakobus.eep import A5_10_06, A5_30_01, A5_30_03, A5_04_03
 from eltakobus.message import Regular4BSMessage
 
 ADDR = b'\xff\xaa\x80\x01'
@@ -79,6 +79,28 @@ class TestEltakobusPatches(unittest.TestCase):
         msg = inst.encode_message(ADDR)
         self.assertEqual(msg.data[2] & 0x01, 1)   # digital_input_0
         self.assertEqual((msg.data[2] & 0x04) >> 2, 1)   # digital_input_2
+
+    # --- drift guard: A5-04-03 decode temperature (R3-08) --------------------
+
+    def test_drift_a5_04_03_decode_bug_present(self):
+        key = "A5_04_03.decode_message"
+        self.assertIn(key, _ORIGINALS, f"{key} not captured - the library may have renamed it")
+        orig = _ORIGINALS[key]
+        # original computes raw_temp = data[1]*265 + data[2] -> 22.8125 for 99-02-12-09
+        m = Regular4BSMessage(ADDR, 0x00, bytes([0x99, 0x02, 0x12, 0x09]))
+        self.assertEqual(orig(m).current_temperature, 22.8125,
+                         "pinned lib should still have the *265 decode typo")
+
+    # --- behavior: A5-04-03 decode temperature -------------------------------
+
+    def test_a5_04_03_decode_temperature_corrected(self):
+        m = Regular4BSMessage(ADDR, 0x00, bytes([0x99, 0x02, 0x12, 0x09]))
+        d = A5_04_03.decode_message(m)
+        self.assertEqual(d.current_temperature, 21.40625)   # *256, spec-correct
+        # only the temperature is corrected; humidity and flags stay intact
+        self.assertEqual(round(d.humidity, 3), 60.0)
+        self.assertEqual(d.learn_button, 1)
+        self.assertEqual(d.telegram_type, 1)
 
 
 class TestTcp2SerialDriftGuard(unittest.TestCase):

@@ -15,7 +15,14 @@ Entity.schedule_update_ha_state = mock.Mock(return_value=None)
 class TestSensor_A5_04_02(unittest.TestCase):
 
     msg1 = Regular4BSMessage(address=b'\xFF\xFF\x00\x80', data=b'\x99\x02\x12\x09', status=0x00)
-    
+
+    def setUp(self):
+        # R3-08: the A5-04-03 decode fix lives in the in-integration eltakobus patch
+        # (applied once from async_setup in production). Apply it here so the expected
+        # temperature is deterministic regardless of test order / isolation.
+        from custom_components.eltako.eltakobus_patches import apply_eltakobus_patches
+        apply_eltakobus_patches()
+
     def create_temperature_sensor(self) -> EltakoTemperatureSensor:
         gateway = GatewayMock()
         dev_id = AddressExpression.parse("FF-FF-00-80")
@@ -36,7 +43,8 @@ class TestSensor_A5_04_02(unittest.TestCase):
         s_temp = self.create_temperature_sensor()
 
         s_temp.value_changed(self.msg1)
-        self.assertEqual(s_temp.native_value, 22.8125)
+        # R3-08: spec-correct value (raw_temp = data[1]*256 + data[2]); was 22.8125 with the *265 typo.
+        self.assertEqual(s_temp.native_value, 21.40625)
 
     def test_humidity_sensor_A5_04_02(self):
         s_hum = self.create_humidity_sensor()
