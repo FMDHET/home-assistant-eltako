@@ -161,7 +161,9 @@ class EnOceanGateway:
         # Previously ALL handlers re-fired on every registration: O(N^2) handler
         # invocations at setup, redundant base-id/version queries per entity, and
         # each burst reset the memory-read guard via connection_state_changed.
-        self._schedule_handler(handler(self._bus.is_active()))
+        # R3-16: via _current_connection_state() so the VNG (no started bus) can report its
+        # TCP-server state instead of the dummy bus's is_active() (which was always False).
+        self._schedule_handler(handler(self._current_connection_state()))
 
     def remove_connection_state_changed_handler(self, handler):
         # H7: allow entities to deregister on removal
@@ -615,16 +617,25 @@ class EnOceanGateway:
         """Return if auto connected is enabled."""
         return str(self._auto_reconnect)
 
+    def _current_connection_state(self) -> bool:
+        """Current connection state, used to seed entity availability and the immediate-notify
+        of a newly registered connection-state handler. (R3-16)
+
+        Overridable: the VirtualNetworkGateway has no started bus (super().__init__ builds a
+        dummy RS485 bus that is never started) and reports whether its TCP server is running
+        instead. Cheap and non-blocking."""
+        try:
+            return bool(self._bus.is_active())
+        except Exception:
+            return False
+
     @property
     def is_connected(self) -> bool:
         """Return whether the underlying bus/TCP connection is currently active. (B1)
 
         Cheap, non-blocking flag read - used to seed entity availability without
         waiting for the first connection-state notification."""
-        try:
-            return bool(self._bus.is_active())
-        except Exception:
-            return False
+        return self._current_connection_state()
 
 
 def detect() -> list[str]:

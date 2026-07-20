@@ -167,10 +167,16 @@ class EltakoEntity(Entity):
 
 
     def validate_sender_id(self, sender_id=None) -> bool:
-        
+
         if sender_id is None:
-            if hasattr(self, "sender_id"):
-                sender_id = self.sender_id
+            # R3-12: actuators (light/switch/cover/climate) store the sender as the PRIVATE
+            # `_sender_id`; only TeachInButton exposes the public `sender_id`. Without this
+            # fallback the validation was a silent no-op for every actuator, so a mistyped
+            # sender id never produced the intended warning. Entities without any sender
+            # (sensors, gateway info fields) have neither attribute -> stays None -> True.
+            sender_id = getattr(self, "sender_id", None)
+            if sender_id is None:
+                sender_id = getattr(self, "_sender_id", None)
 
         if sender_id is not None:
             # A7: use the resolved local variable - previously self.sender_id was

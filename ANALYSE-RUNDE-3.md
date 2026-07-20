@@ -89,20 +89,21 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 - **Test:** Fake-Bus; nach Swap den ALTEN Handler mit False feuern → kein Gateway-Handler aufgerufen; NEUER Handler → Zustellung.
 - **Aufwand:** S–M · sinnvoll im selben Release wie R3-05.
 
-#### R3-07 — Sensor-Plattform: alle A5-Decode-Entities ohne Teach-In-Guard · CONFIRMED (Temperature gesichtet; Muster-Klassen identisch)
+#### R3-07 — Sensor-Plattform: alle A5-Decode-Entities ohne Teach-In-Guard · CONFIRMED (Temperature gesichtet; Muster-Klassen identisch) · ✅ ERLEDIGT v2.12.0
 - **Fundstelle:** [sensor.py:784](custom_components/eltako/sensor.py#L784) (Temperature) sowie Humidity (~918), Illumination (~806), BatteryVoltage (~864), Pir (~564), Voltage (~590), Twilight (~824), Daylight (~841), TargetTemperature (~891)
 - **Problem:** `value_changed` übernimmt Decodes ungeprüft; Meter/WeatherStation im selben File und die binary_sensor-Branches (A4-Fix) guarden. Ein LRN-Teach-In (z. B. A5-04-02: `10-10-0D-80`) publiziert −15,8 °C / 6 % → Statistik-Spike, Frostschutz-Automation feuert.
 - **Fix:** Am Anfang jedes betroffenen `value_changed`: `if getattr(decoded, "learn_button", 1) == 0: return`; für EEPs ohne `learn_button`-Attribut Roh-Bit prüfen: `if len(msg.data) > 3 and not (msg.data[3] & 0x08): return`.
 - **Test:** Pro Klasse: Teach-In-Telegramm → `native_value` bleibt None; Daten-Telegramm → Wert (Muster: `test_round2_audit_fixes.test_a5_07_01_ignores_teach_in`).
 - **Aufwand:** M (viele Klassen, mechanisch)
+- **Umsetzung (v2.12.0):** einheitlicher Roh-Bit-Guard `_is_4bs_teach_in(msg)` (DB0.3) in allen 9 Sensor-`value_changed`. Review bestätigte: für A5-04-xx/A5-07-01/A5-08-01 identisch zu `learn_button==0`; für A5-06-01/A5-10-06/A5-10-12 (kein `learn_button`) ist der Roh-Bit-Check die einzige einheitliche Option und deckt sich mit dem Encode der Bibliothek (Daten-Telegramme setzen DB0.3; alle A5-10-06-Prioritätscodes haben Bit 3). **Hardware-Vorbehalt (LOW):** Der (ungenutzte) A5-10-03-Encoder der Bibliothek lässt data[3]=0x00; ein A5-10-03-Sende-/Loopback-Pfad existiert heute nicht (nur Empfang), daher zur Laufzeit nicht erreichbar — die DB0.3-Annahme für A5-10-03 in der Hardware-Session gegen echtes Gerät bestätigen.
 
-#### R3-08 — Lib-Bug (NEU): A5-04-03-Decode rechnet `msg.data[1] * 265` statt `* 256` · CONFIRMED (Lib-Quelle)
+#### R3-08 — Lib-Bug (NEU): A5-04-03-Decode rechnet `msg.data[1] * 265` statt `* 256` · CONFIRMED (Lib-Quelle) · ✅ ERLEDIGT v2.12.0
 - **Fundstelle:** `.venv/.../eltakobus/eep.py:1075` (`raw_temp = msg.data[1] * 265 + msg.data[2]`)
 - **Problem:** Zahlendreher: +0,70 °C (MSB=1), +1,41 °C (MSB=2), +2,11 °C (MSB=3) + Sprungstelle an jeder 256er-Grenze. **Decode-only** → fällt unter die B5-Policy „ohne Gerät verifizierbar" (anders als der zurückgestellte A5-04-03-**Encode**-Offset). Achtung: `tests/test_sensor_A5_04_03.py` backt den falschen Wert ein (22.8125 statt spec-korrekt 21.40625 für `99-02-12-09`) → Test mit fixen.
 - **Fix:** Decode-Wrapper in `eltakobus_patches.py` (Muster `_patch_a5_30_learn_bit_encode`, idempotenter `_ORIGINALS`-Capture): Temperatur mit `*256` neu berechnen; Drift-Guard: Original liefert weiterhin den 265er-Wert. Upstream-Issue-Kandidat.
 - **Aufwand:** S–M
 
-#### R3-09 — F6-01-01-Einzeltaster feuern nie das Button-Event, obwohl ein „Event Id"-Feld dafür angelegt wird · CONFIRMED
+#### R3-09 — F6-01-01-Einzeltaster feuern nie das Button-Event, obwohl ein „Event Id"-Feld dafür angelegt wird · CONFIRMED · ✅ ERLEDIGT v2.12.0
 - **Fundstelle:** [binary_sensor.py:258-267](custom_components/eltako/binary_sensor.py#L258-L267) (frühes `return` vor dem gemeinsamen Fire-Block) vs. [sensor.py:427-436](custom_components/eltako/sensor.py#L427-L436) („Event Id"-StaticInfoField wird auch für F6_01_01 erzeugt)
 - **Problem/Fix:** Das `return` überspringt `hass.bus.fire` + Push-Duration-Buchhaltung. Fix: `return` durch Fall-through ersetzen (pressed_buttons bleibt leer → nur Basis-Event, kein button-spezifisches). Alternative (Event bewusst nicht feuern) hieße: „Event Id"-Feld für F6_01_01 nicht mehr anlegen — Fall-through ist die konsistente Wahl.
 - **Test:** Neuer `test_binary_sensor_F6_01_01.py`: Push+Release → 2 Events auf HassMock-Bus inkl. `push_duration_in_sec` (heute: `fired_events` leer).
@@ -115,21 +116,21 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 - **Test:** Restore aus `State('sensor.x','73.2',{'unit_of_measurement':'°F',...})` → native ≈ 22,9 (heute 73,2).
 - **Aufwand:** M
 
-#### R3-11 — A5-30-01: `invert_signal`/`device_class` des Kontakts werden auf die „Low Battery"-Entity angewendet · CONFIRMED
+#### R3-11 — A5-30-01: `invert_signal`/`device_class` des Kontakts werden auf die „Low Battery"-Entity angewendet · CONFIRMED · ✅ ERLEDIGT v2.12.0
 - **Fundstelle:** [binary_sensor.py:66-74 + 319-324](custom_components/eltako/binary_sensor.py#L319) (auch A5-30-03 „Status of Wake", Z. ~356-360)
 - **Problem:** `invert_signal: true` (normale NC/NO-Wahl für den Kontakt) invertiert stillschweigend den Batterie-Alarm (ON bei voller Batterie, OFF bei leerer → Notification feuert nie); die User-device_class (z. B. `window`) landet ebenfalls auf der Batterie-Entity.
 - **Fix:** Für `low_battery`: `device_class=BinarySensorDeviceClass.BATTERY` hart setzen, `invert_signal` nie anwenden (direkt `decoded.low_battery`); „wake" analog ohne Inversion. (Beim Anfassen: öffentliches `contact_closed` statt `_contact_closed` verwenden.)
 - **Test:** A5-30-01-Paar mit `invert_signal=True`; Telegramm „Batterie ok" → low_battery `is_on=False` (heute True) + device_class `battery`; „Batterie leer" → True.
 - **Aufwand:** S
 
-#### R3-12 — Sender-ID-Validierung ist für alle Aktoren ein No-op (`sender_id` vs. `_sender_id`) · CONFIRMED
+#### R3-12 — Sender-ID-Validierung ist für alle Aktoren ein No-op (`sender_id` vs. `_sender_id`) · CONFIRMED · ✅ ERLEDIGT v2.12.0
 - **Fundstelle:** [device.py:146-157](custom_components/eltako/device.py#L146) (`hasattr(self, "sender_id")`) vs. `_sender_id` in light.py/switch.py/cover.py/climate.py (nur `TeachInButton` nutzt den öffentlichen Namen)
 - **Problem:** `validate_actuators_dev_and_sender_id` — am Ende jedes Plattform-Setups genau dafür da — validiert für Lights/Switches/Cover/Climate **nichts**: Falsche Sender-IDs (klassischer Konfigurationsfehler bei Transceiver-Gateways) erzeugen nie die vorgesehene Warnung.
 - **Fix:** In `validate_sender_id` Fallback `sender_id = getattr(self, "_sender_id", None)` ergänzen (oder `sender_id`-Property auf Basisklasse, die `_sender_id` liefert). **Nebenwirkung prüfen:** Entities ohne jeden Sender (Sensoren, Gateway-Felder) müssen weiter still True liefern.
 - **Test:** EltakoSwitch auf Transceiver-GatewayMock mit Sender außerhalb des Base-ID-Fensters → `gateway.validate_sender_id` wird aufgerufen/warnt (heute: nie aufgerufen).
 - **Aufwand:** S
 
-#### R3-13 — Switch/SwitchableLight: WARNING-Spam für erwartbare Begleit-Telegramme derselben Adresse · CONFIRMED
+#### R3-13 — Switch/SwitchableLight: WARNING-Spam für erwartbare Begleit-Telegramme derselben Adresse · CONFIRMED · ✅ ERLEDIGT v2.12.0
 - **Fundstelle:** [switch.py:150-156](custom_components/eltako/switch.py#L150-L156); analog `EltakoSwitchableLight` (light.py ~305-313). `EltakoDimmableLight` hat den M4-Filter, diese nicht.
 - **Problem:** Kein RORG-Vorfilter → jedes org≠0x05-Telegramm (z. B. die **dokumentierte** FSR14M-2x-Doppel-Config: gleiche Adresse als Switch + A5-12-01-Meter) wirft `WrongOrgError` und loggt pro Telegramm eine WARNING. Dauerspam bei empfohlener Konfiguration.
 - **Fix:** M4-Muster spiegeln: bei M5-38-08/F6-02-xx-Dev-EEPs `if msg.org != 0x05: LOGGER.debug(...); return` vor dem Decode (bzw. WrongOrgError separat auf DEBUG).
@@ -150,7 +151,7 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 - **Test:** Recorder auf `ELTAKO_GLOBAL_EVENT_BUS_ID`; `gateway.send_message(msg)` bei aktivem Fake-Bus → genau 1 Dict (heute 2); Entity-Send → weiterhin genau 1.
 - **Aufwand:** S · Vorsicht: Wechselwirkung mit AM1/AN2 (Welle C) — dort mit einplanen.
 
-#### R3-16 — VNG: `is_connected`/„Connected"-Sensor dauerhaft False (Dummy-Bus + zu frühes True) · CONFIRMED
+#### R3-16 — VNG: `is_connected`/„Connected"-Sensor dauerhaft False (Dummy-Bus + zu frühes True) · CONFIRMED · ✅ ERLEDIGT v2.12.0
 - **Fundstelle:** [virtual_network_gateway.py:38ff](custom_components/eltako/virtual_network_gateway.py#L38) (super().__init__ baut nie gestarteten RS485-Bus); True-Fire beim Serverstart passiert in `async_setup` **vor** dem Plattform-Forward (eltako_integration_init.py) — die danach registrierten Handler (Connected-Sensor, B1-Availability) bekommen als Immediate-Notify das `is_active()`des Dummy-Busses = False, und ein späteres True kommt nie.
 - **Problem:** Der „Connected"-Sensor der VNG zeigt ab Start dauerhaft „Disconnected", obwohl Clients bedient werden; `is_connected`/Diagnostics melden False. Reconnect-Button „heilt" scheinbar (neue Server-Generation feuert True, wenn Handler existieren). (Bereits im B1-Review als Rand-Fall notiert; hier mit konkretem Nutzer-Impact — der Nutzer betreibt eine VNG.)
 - **Fix:** `is_connected`-Override in `VirtualNetworkGateway` → `self._running.is_set()`; Immediate-Notify der Basisklasse über einen Hook (`_current_connection_state()`) leiten, den VNG überschreibt. Optional Dummy-Bus für VirtualNetworkAdapter gar nicht bauen.
@@ -168,10 +169,10 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 #### R3-19 — Dimmbares Licht mit F6-Sender: brightness wird still verworfen, UI bestätigt sie optimistisch · PLAUSIBLE
 [light.py ~118-141]: F6-Branch kann brightness nicht transportieren; Fast-Status schreibt sie trotzdem. Fix: bei F6-Sender + expliziter brightness einmalig warnen (oder ColorMode.ONOFF), Fast-Status-Block für F6 die brightness überspringen. Aufwand S.
 
-#### R3-20 — Gerät in `sensor:` UND `binary_sensor:` → doppelte unique_id, HA verwirft die zweite Entity mit ERROR · CONFIRMED (per Inspektion)
+#### R3-20 — Gerät in `sensor:` UND `binary_sensor:` → doppelte unique_id, HA verwirft die zweite Entity mit ERROR · CONFIRMED (per Inspektion) · ✅ ERLEDIGT v2.12.0
 [binary_sensor.py:38ff]: Der Doppel-Scan über beide Sektionen (dokumentiertes Muster, z. B. F6-10-00) erzeugt zwei EltakoBinarySensor mit identischer id → „…does not generate unique IDs"-ERROR pro Start; welche überlebt, hängt von der Reihenfolge ab. Fix: seen-Set über (dev_id, description_key) über beide Pässe, binary_sensor-Sektion bevorzugen. Aufwand S.
 
-#### R3-21 — `validate_actuators_dev_and_sender_id` läuft auf der Sensor-Plattform → Warn-Spam für korrekte dezentrale Sensoren · CONFIRMED
+#### R3-21 — `validate_actuators_dev_and_sender_id` läuft auf der Sensor-Plattform → Warn-Spam für korrekte dezentrale Sensoren · CONFIRMED · ✅ ERLEDIGT v2.12.0
 [sensor.py:479] vs. binary_sensor.py:88 (überspringt bewusst). Funk-Sensoren (Wetterstation 05-…, FT55 FE-…) scheitern an beiden dev_id-Checks → ~1 Warnung pro Entity pro Start; auf Transceivern warnen auch die Gateway-Felder (dev_id 00-00-00-00). Fix: Aufruf entfernen (wie binary_sensor) oder auf Entities mit Sender beschränken. Aufwand S. *(Nach R3-12-Fix würde der Spam sonst sogar zunehmen — R3-12 und R3-21 zusammen umsetzen!)*
 
 #### R3-22 — VNG-Accept-Loop: transienter accept-Fehler feuert False (nie wieder True) und retried ohne Backoff · PLAUSIBLE
@@ -204,6 +205,6 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 | Welle | Inhalt | Charakter |
 |---|---|---|
 | **R3-A** ✅ **ERLEDIGT (v2.11.0)** | R3-01 + R3-02 (tcp2serial), R3-03 (Unit-ValueError), R3-04 (Climate-Listen), R3-05 + R3-06 (Lifecycle-Lock + Generations-Guard) | kritisch/hoch, ohne Hardware, kleiner Diff |
-| **R3-B** | R3-07 (Learn-Guards), R3-08 (Lib-Decode-Patch), R3-09 (F6-01-01-Event), R3-11 (Low-Battery-Invert), R3-12 + R3-21 (Validierung), R3-13 (WARNING-Filter), R3-16 (VNG is_connected), R3-20 (Dual-Listing-Dedupe) | mittel, mechanisch, gut testbar |
+| **R3-B** ✅ **ERLEDIGT (v2.12.0)** | R3-07 (Learn-Guards), R3-08 (Lib-Decode-Patch), R3-09 (F6-01-01-Event), R3-11 (Low-Battery-Invert), R3-12 + R3-21 (Validierung), R3-13 (WARNING-Filter), R3-16 (VNG is_connected), R3-20 (Dual-Listing-Dedupe) | mittel, mechanisch, gut testbar |
 | **R3-C** | R3-10 (RestoreSensor), R3-17/18 (Cover-Restore/Tilt), R3-14 ⚠️ (Nutzer fragen!), R3-15 (mit AM1/AN2 koordinieren), R3-19, R3-22/23 (VNG), R3-24 (@callback), R3-25/26 (Hygiene) | niedrig/Design, teils Verhaltensänderung |
 | **R3-D** | Vollständiger Nachhol-Pass Domänen 5+6 | Audit-Rest |

@@ -307,6 +307,13 @@ class EltakoSwitchableLight(AbstractLightEntity):
 
     def value_changed(self, msg):
         """Update the internal state of this device."""
+        # R3-13: EltakoSwitchableLight uses M5-38-08 (RPS, org 0x05). Filter other RORGs
+        # BEFORE decoding so a co-located A5-12-01 meter telegram (org 0x07) on the same
+        # address no longer raises WrongOrgError + a WARNING per telegram. Mirrors the M4
+        # org filter in EltakoDimmableLight.
+        if msg.org != 0x05:
+            LOGGER.debug("[%s %s] Ignoring non-RPS telegram (org=%s).", Platform.LIGHT, str(self.dev_id), msg.org)
+            return
         try:
             decoded = self.dev_eep.decode_message(msg)
         except Exception as e:
