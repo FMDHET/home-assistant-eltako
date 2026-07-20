@@ -149,8 +149,21 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
         self._sender_eep = sender_eep
 
         self.thermostat = thermostat
-        if self.thermostat:
-            self.listen_to_addresses.append(self.thermostat.id)
+        # R3-04: the EXTERNALIZED thermostat address (bytes-carrying AddressExpression) used
+        # both to register the receive filter and to match telegrams in value_changed. None
+        # when no thermostat (or a thermostat block without `id`) is configured.
+        self._external_thermostat_id = None
+        if self.thermostat and self.thermostat.id is not None:
+            # R3-04: register the ADDRESS BYTES (id[0]), not the AddressExpression object.
+            # The receive filter compares `adr[0] in self.listen_to_addresses` with bytes
+            # (device.py), so appending the AddressExpression made every thermostat telegram
+            # fail the filter and never reach value_changed. Mirror the base-id externalization
+            # for local thermostat addresses too (see device.py: EltakoEntity.__init__).
+            thermostat_id = self.thermostat.id
+            if thermostat_id.is_local_address():
+                thermostat_id = thermostat_id.add(self.gateway.base_id)
+            self._external_thermostat_id = thermostat_id
+            self.listen_to_addresses.append(thermostat_id[0])
 
         self.cooling_switch = cooling_switch
         self.cooling_switch_last_signal_timestamp = 0
@@ -403,16 +416,19 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
     def value_changed(self, msg: ESP2Message) -> None:
         """Update the internal state of this device."""
 
-        climate_address, _ = self.dev_id
-        if msg.address == climate_address:
+        # R3-04: match against the EXTERNALIZED addresses. The gateway rewrites local bus
+        # addresses to their external form before dispatching on the global bus that entities
+        # listen on (gateway._callback_receive_message_from_serial_bus), so msg.address here is
+        # always external. Comparing against the raw configured address silently dropped every
+        # telegram for the common local-address configuration - both the actuator's own status
+        # and the room thermostat - which is a root cause of "climate does not update".
+        if msg.address == self._external_dev_id[0]:
             LOGGER.debug(f"[climate {self.dev_id}] Change state triggered by actuator: {self.dev_id}")
             self.change_temperature_values(msg)
 
-        if self.thermostat:
-            thermostat_address, _ = self.thermostat.id
-            if msg.address == thermostat_address:
-                LOGGER.debug(f"[climate {self.dev_id}] Change state triggered by thermostat: {self.thermostat.id}")
-                self.change_temperature_values(msg)
+        if self._external_thermostat_id is not None and msg.address == self._external_thermostat_id[0]:
+            LOGGER.debug(f"[climate {self.dev_id}] Change state triggered by thermostat: {self.thermostat.id}")
+            self.change_temperature_values(msg)
 
 
     def _send_command_to_change_mode_(self):

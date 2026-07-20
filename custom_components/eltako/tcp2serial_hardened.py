@@ -10,13 +10,27 @@ Home Assistant keeps showing the gateway as connected although nothing is
 received anymore; only a HA restart recovers the connection.
 
 ``HardenedTCP2SerialCommunicator`` overrides ``run()`` (a copy of the 0.2.21
-implementation) with two fixes:
+implementation) with these fixes (all marked ``# HARDENED``):
 
 * ``recv() == b''`` raises ``ConnectionResetError`` so the upstream reconnect
   logic kicks in (reconnect after ``reconnection_timeout`` seconds).
 * Kernel-level TCP keep-alive (``SO_KEEPALIVE``) is enabled on the socket so
   silently dropped connections (NAT idle timeout, gateway power loss, ...)
   are detected by the OS as well.
+* R3-01: ``last_message_received`` is reset to ``time.time()`` in the connect
+  block, giving every (re)connection a fresh grace period. Upstream only sets
+  it at thread start and after ``recv``; the inherited application-level
+  keep-alive check runs *before* the first ``recv`` and, after an outage longer
+  than ``tcp_keep_alive_timeout``, would immediately close the freshly
+  established connection (and set the timestamp to 0). The result was a
+  permanent connect/close livelock after every outage > 30s: ``recv`` was
+  never reached, so nothing could ever refresh the timestamp again, until a
+  HA restart or a manual reconnect rebuilt the bus.
+* R3-02: partial ESP3 frames spread across two TCP segments are no longer
+  lost. ``Packet.parse_msg`` deliberately puts an incomplete frame's remainder
+  back into ``self._buffer``; upstream then *replaces* the buffer on the next
+  ``recv`` instead of appending, discarding the remainder (the serial variant
+  gets this right with ``extend``). The hardened copy appends.
 
 The library is pinned (``==0.2.21``) in manifest.json, so the copied ``run()``
 cannot drift from the actual implementation unnoticed. Re-verify this module
@@ -80,6 +94,12 @@ class HardenedTCP2SerialCommunicator(TCP2SerialCommunicator):
                         self._ser.settimeout(None)
 
                     self._enable_tcp_keepalive(self._ser)  # HARDENED: detect silent drops
+                    # HARDENED (R3-01): fresh grace period per connection. Without this
+                    # the inherited _check_timeout_on_application_level() (runs before the
+                    # first recv) closes the just-established connection whenever the last
+                    # message predates this connect by more than tcp_keep_alive_timeout -
+                    # a permanent reconnect livelock after any outage > that timeout.
+                    self.last_message_received = time.time()
 
                     self.log.info(f"Established TCP connection to {self._host}:{self._port} (blocking: {not self._auto_reconnect}, tcp timeout: {self._tcp_connection_timeout} sec, serial timeout: {self._tcp_keep_alive_timeout} sec)")
 
@@ -107,7 +127,10 @@ class HardenedTCP2SerialCommunicator(TCP2SerialCommunicator):
                     if not data:  # HARDENED: EOF = remote closed gracefully (FIN)
                         raise ConnectionResetError("Remote closed the TCP connection (EOF). Reconnecting.")
                     if data not in self.KEEP_ALIVE_MESSAGES:
-                        self._buffer = data
+                        # HARDENED (R3-02): append, don't overwrite. parse_msg() leaves an
+                        # incomplete frame's remainder in self._buffer; overwriting it drops
+                        # every frame split across two TCP segments.
+                        self._buffer = list(self._buffer) + list(data)
                         self.parse()
                     self.last_message_received = time.time()
 

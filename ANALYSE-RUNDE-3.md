@@ -39,7 +39,7 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 
 ### 🔴 KRITISCH
 
-#### R3-01 — TCP-Reconnect-Livelock: Keepalive-Timestamp wird beim (Re-)Connect nie zurückgesetzt · CONFIRMED
+#### R3-01 — TCP-Reconnect-Livelock: Keepalive-Timestamp wird beim (Re-)Connect nie zurückgesetzt · CONFIRMED · ✅ ERLEDIGT v2.11.0
 - **Fundstelle:** [tcp2serial_hardened.py:67-112](custom_components/eltako/tcp2serial_hardened.py#L67-L112) (Kopie) + geerbtes `_check_timeout_on_application_level` (`esp3_tcp_com.py:192-197`)
 - **Problem:** `last_message_received` wird nur beim Thread-Start (Z. 67) und nach `recv` (Z. 112) gesetzt. Der geerbte App-Level-Keepalive-Check (läuft **vor** jedem recv, Z. 89) schließt die Verbindung, wenn `time.time()-last_message_received > tcp_keep_alive_timeout` (Default 30 s) — und setzt den Timestamp dabei auf **0**. Nach jedem Ausfall > 30 s gilt: connect → fire(True) → Check schlägt sofort zu → close → Exception → fire(False) → 15 s warten → dasselbe. **`recv` wird nie erreicht, nichts kann den Timestamp je auffrischen: permanentes Connect/Close-Flattern bis HA-Neustart oder manueller Reconnect** (der baut einen neuen Bus, dessen Thread-Start Z. 67 den Timestamp frisch setzt — deshalb „hilft" der Reconnect-Button).
 - **Failure-Szenario:** mgw-lan wird 60 s stromlos. Ab Rückkehr flappt die Verbindung alle ~15 s ewig; alle Entities flappen verfügbar/unverfügbar (B1), kein Telegramm kommt je an, 1 Traceback pro Zyklus. Der Single-Client-Tasmota-Slot wird dabei ständig belegt/freigegeben.
@@ -50,7 +50,7 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 
 ### 🟠 HOCH
 
-#### R3-02 — Zerteilte ESP3-Frames gehen verloren: `self._buffer = data` überschreibt den Reassembly-Rest · CONFIRMED
+#### R3-02 — Zerteilte ESP3-Frames gehen verloren: `self._buffer = data` überschreibt den Reassembly-Rest · CONFIRMED · ✅ ERLEDIGT v2.11.0
 - **Fundstelle:** [tcp2serial_hardened.py:110](custom_components/eltako/tcp2serial_hardened.py#L110); Upstream identisch (`esp3_tcp_com.py:164`); Serial-Variante macht es richtig (`esp3_serial_com.py:221` `extend`)
 - **Problem:** `Packet.parse_msg` legt unvollständige Frame-Reste absichtlich zurück in `self._buffer`; der TCP-Pfad **ersetzt** den Buffer aber bei jedem `recv`, statt anzuhängen. Jeder über zwei TCP-Segmente verteilte Frame ist verloren (Kopf überschrieben, Rest scheitert am Sync/CRC).
 - **Failure-Szenario:** Die Tasmota-Bridge forwardet UART-Bytes poll-getaktet → ~21-Byte-Funk-Frames landen regelmäßig in 2 Segmenten. Ergebnis: sporadisch „verschluckte" Tastendrücke/Sensor-Updates ohne Log-Hinweis.
@@ -58,21 +58,22 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 - **Test:** Frame in `bytes[:9]` + `bytes[9:]` über zwei recv-Returns einspeisen → genau 1 konvertierte Nachricht (heute 0); zusätzlich `IM2M` zwischen den Fragmenten → Kopf bleibt erhalten.
 - **Aufwand:** S (gleicher Release wie R3-01 sinnvoll: beide in derselben Datei/run()).
 
-#### R3-03 — „Received Messages per Session"-Sensor wird nie angelegt: `suggested_unit_of_measurement="Messages"` → ValueError · CONFIRMED (empirisch reproduziert)
+#### R3-03 — „Received Messages per Session"-Sensor wird nie angelegt: `suggested_unit_of_measurement="Messages"` → ValueError · CONFIRMED (empirisch reproduziert) · ✅ ERLEDIGT v2.11.0
 - **Fundstelle:** [sensor.py:1051-1055](custom_components/eltako/sensor.py#L1051-L1055)
 - **Problem:** `suggested_unit_of_measurement="Messages"` mit `native_unit=None`/ohne device_class: HAs `SensorEntity._is_valid_suggested_unit` wirft `ValueError` — **reproduziert** gegen installierte HA 2026.7 (`unit_of_measurement RAISES: ValueError … suggest an incorrect unit of measurement: Messages.`). `entity_platform` bricht das Hinzufügen **dieser** Entity mit „Error adding entity"-Traceback bei jedem Start ab. Das Legacy-Feld `unit_of_measurement="count"` daneben ist tot (wird von SensorEntity nie gelesen). Betrifft auch die Live-Installation des Nutzers (Sensor fehlt still).
 - **Fix:** Beide Unit-Felder ersatzlos streichen (Zähler braucht keine Einheit); `state_class=TOTAL_INCREASING` + icon bleiben.
 - **Test:** Regressionstest: `s.unit_of_measurement` und Entity-Add-Pfad werfen nicht (heute: ValueError).
 - **Aufwand:** S
 
-#### R3-04 — Climate: Thermostat-Telegramme erreichen die Entity nie (AddressExpression in bytes-Liste) · CONFIRMED
+#### R3-04 — Climate: Thermostat-Telegramme erreichen die Entity nie (AddressExpression in bytes-Liste) · CONFIRMED · ✅ ERLEDIGT v2.11.0
 - **Fundstelle:** [climate.py:153](custom_components/eltako/climate.py#L153) vs. [device.py:58+268](custom_components/eltako/device.py#L58)
 - **Problem:** `listen_to_addresses.append(self.thermostat.id)` hängt die **AddressExpression** an; der Filter vergleicht aber `adr[0] in listen_to_addresses` mit **bytes** (device.py:268). bytes == AddressExpression ist immer False → **jedes Telegramm des Raumthermostats wird vor `value_changed` verworfen** — für jede Adressform. Tests treffen es nicht, weil sie `value_changed` direkt aufrufen. (Erklärt sehr wahrscheinlich das bekannte Symptom „Climate aktualisiert nicht" — schärfer als der F5-Verdacht „externes Adress-Matching", und ohne Hardware fixbar. AC8 — falsches Decode-EEP — liegt dahinter und bleibt separat offen.)
 - **Fix:** `self.listen_to_addresses.append(self.thermostat.id[0])`; zusätzlich für lokale Thermostat-IDs die Externalisierung spiegeln (`…id.add(self.gateway.base_id)[0]` wenn `is_local_address()` — wie device.py:52-58).
 - **Test:** `cc._message_received_callback({'esp2_msg': A5_10_06(...).encode_message(b'\xff\xff\xff\x01')})` → `current_temperature` aktualisiert (heute: `value_changed` wird nie gerufen); plus `assert all(isinstance(a, bytes) for a in cc.listen_to_addresses)`.
 - **Aufwand:** S
+- **Review-Erweiterung (v2.11.0):** Der Fix des Empfangsfilters allein war ein Halb-Fix. `value_changed` (climate.py) verglich `msg.address` weiterhin gegen die **rohe** `dev_id`/`thermostat.id`, während das Gateway lokale Adressen vor dem Dispatch auf den globalen Bus **externalisiert** — bei lokaler Konfiguration (Normalfall) wurde daher jedes Telegramm intern erneut verworfen, **inkl. der eigenen Status-Telegramme des Aktors** (Hauptursache „Climate aktualisiert nicht", unabhängig vom Thermostat). Erweitert: beide Zweige (Aktor + Thermostat) vergleichen jetzt gegen `self._external_dev_id[0]` bzw. das gespeicherte `self._external_thermostat_id[0]`. Zusätzlich `None`-Guard, falls ein `room_thermostat`-Block ohne `id` konfiguriert ist (sonst `None.is_local_address()` → AttributeError in `__init__`). Kein Regressionsrisiko: für globale/externe Adressen ist der Vergleich identisch zu vorher.
 
-#### R3-05 — `reconnect()`/Unload nicht serialisiert: verwaister laufender Bus hält den Single-Client-Slot · CONFIRMED
+#### R3-05 — `reconnect()`/Unload nicht serialisiert: verwaister laufender Bus hält den Single-Client-Slot · CONFIRMED · ✅ ERLEDIGT v2.11.0
 - **Fundstelle:** [gateway.py:336-350](custom_components/eltako/gateway.py#L336) (`reconnect`), `_unload_blocking`
 - **Problem:** Kein Lock um stop→join(10)→`_init_bus`→start (VNG hat für exakt das `_lifecycle_lock`, die Basisklasse nicht). Zwei überlappende `reconnect()` (Doppelklick auf den Button, Automation+User): A startet busA und weist zu, B weist danach busB zu und startet ihn → **busA läuft verwaist weiter** (Callbacks + Port/TCP-Slot), busB (auf den `self._bus` zeigt) bekommt beim Single-Client-Gateway nie einen Connect. Symptomatik: Telegramme kommen an (busA), aber `is_connected`=False (busB) → alles unavailable, Senden schlägt fehl, alle 15 s ein False-Event. Nur HA-Neustart löst es. Gleiche Race zwischen `reconnect()` und `_unload_blocking()` beim Reload.
 - **Fix:** `self._lifecycle_lock = threading.Lock()` + `self._shutdown`-Flag in `EnOceanGateway.__init__`; Bodies von `reconnect()` und `_unload_blocking()` in `with self._lifecycle_lock:`; `reconnect()` No-op wenn `_shutdown` (Muster VNG).
@@ -81,7 +82,7 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 
 ### 🟡 MITTEL
 
-#### R3-06 — Zombie-Bus feuert nach Generationswechsel ein letztes `connected=False` · CONFIRMED (per Inspektion)
+#### R3-06 — Zombie-Bus feuert nach Generationswechsel ein letztes `connected=False` · CONFIRMED (per Inspektion) · ✅ ERLEDIGT v2.11.0
 - **Fundstelle:** [gateway.py:242](custom_components/eltako/gateway.py#L242) (`set_status_changed_handler` bekommt in jeder Generation dieselbe Bound-Method, kein Generations-Guard); Bus-`run()`-Exits feuern unconditional False (z. B. tcp2serial_hardened.py:134)
 - **Problem:** `join(10)` < `reconnection_timeout`-Sleep (15 s Default) → ein mitten im Sleep gestoppter Bus-Thread überlebt den join; wacht er später auf, feuert sein Exit-False **nach** dem True des neuen Busses. `GatewayConnectionState.value_changed` vertraut dem gepushten Wert (bekanntes B1-Follow-up) → Sensor klemmt auf „Disconnected", während Entities (reconcilen live) verfügbar bleiben — sich widersprechende UI. Zusätzlich cleart `connection_state_changed` den Memory-Read-Guard.
 - **Fix:** Pro-Generation-Adapter in `_init_bus`: `bus.set_status_changed_handler(lambda st, b=bus: self._on_bus_status(b, st))`; `_on_bus_status` verwirft, wenn `b is not self._bus`. (Erledigt zugleich das B1-Follow-up „Sensor-Wert-Reconcile" an der Wurzel.)
@@ -202,7 +203,7 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 
 | Welle | Inhalt | Charakter |
 |---|---|---|
-| **R3-A** (sofort) | R3-01 + R3-02 (tcp2serial), R3-03 (Unit-ValueError), R3-04 (Climate-Listen), R3-05 + R3-06 (Lifecycle-Lock + Generations-Guard) | kritisch/hoch, ohne Hardware, kleiner Diff |
+| **R3-A** ✅ **ERLEDIGT (v2.11.0)** | R3-01 + R3-02 (tcp2serial), R3-03 (Unit-ValueError), R3-04 (Climate-Listen), R3-05 + R3-06 (Lifecycle-Lock + Generations-Guard) | kritisch/hoch, ohne Hardware, kleiner Diff |
 | **R3-B** | R3-07 (Learn-Guards), R3-08 (Lib-Decode-Patch), R3-09 (F6-01-01-Event), R3-11 (Low-Battery-Invert), R3-12 + R3-21 (Validierung), R3-13 (WARNING-Filter), R3-16 (VNG is_connected), R3-20 (Dual-Listing-Dedupe) | mittel, mechanisch, gut testbar |
 | **R3-C** | R3-10 (RestoreSensor), R3-17/18 (Cover-Restore/Tilt), R3-14 ⚠️ (Nutzer fragen!), R3-15 (mit AM1/AN2 koordinieren), R3-19, R3-22/23 (VNG), R3-24 (@callback), R3-25/26 (Hygiene) | niedrig/Design, teils Verhaltensänderung |
 | **R3-D** | Vollständiger Nachhol-Pass Domänen 5+6 | Audit-Rest |

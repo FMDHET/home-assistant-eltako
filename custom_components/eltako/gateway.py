@@ -87,6 +87,15 @@ class EnOceanGateway:
         self._base_id_change_handlers = []
         self._received_message_count_handler = None
 
+        # R3-05: serialize reconnect() and _unload_blocking(). Two overlapping lifecycle
+        # operations (double reconnect button press, or a reconnect racing the unload on
+        # reload) could otherwise start one bus, then have the other reassign self._bus and
+        # start a second one - leaving the first bus running orphaned, holding a single-client
+        # gateway's only connection slot while self._bus points at a bus that never connects.
+        # The VNG subclass keeps its own copy of this lock for its TCP server threads.
+        self._lifecycle_lock = threading.Lock()
+        self._shutdown = False   # set on unload; reconnect() becomes a no-op afterwards
+
         self._attr_model = GATEWAY_DEFAULT_NAME + " - " + self.dev_type.upper()
 
         if GatewayDeviceType.is_esp2_gateway(self.dev_type):
@@ -246,7 +255,23 @@ class EnOceanGateway:
                                                esp2_translation_enabled=True, 
                                                auto_reconnect=self._auto_reconnect)
         
-        self._bus.set_status_changed_handler(self._fire_connection_state_changed_event)
+        # R3-06: bind the status handler to THIS bus generation. join(10) can be shorter than
+        # the bus's reconnection sleep, so a superseded bus thread may still be alive and fire
+        # its exit `connected=False` AFTER the new generation reported `connected=True`. The
+        # per-generation adapter drops such stale callbacks (see _on_bus_status). This also
+        # fixes the B1 follow-up at the root: GatewayConnectionState.value_changed trusts the
+        # pushed value, so a stale False would strand the "Connected" sensor on "Disconnected".
+        bus = self._bus
+        bus.set_status_changed_handler(lambda status, b=bus: self._on_bus_status(b, status))
+
+
+    def _on_bus_status(self, bus, status):
+        """Forward a bus connection-state change only if it comes from the CURRENT bus
+        generation. Runs on the bus/reconnect thread. (R3-06)"""
+        if bus is not self._bus:
+            LOGGER.debug("[Gateway] [Id: %d] Ignoring connection state %s from a superseded bus generation.", self.dev_id, status)
+            return
+        self._fire_connection_state_changed_event(status)
 
 
     def _register_device(self) -> None:
@@ -336,18 +361,24 @@ class EnOceanGateway:
     def reconnect(self):
         """Restart the bus connection. BLOCKING - never call directly from the event loop,
         use `await hass.async_add_executor_job(gateway.reconnect)` instead. (K2)"""
-        try:
-            LOGGER.info("[Gateway] [Id: %d] Connection Restart", self.dev_id)
-            self._bus.stop()
-            if self._bus.is_alive():
-                self._bus.join(10)    # wait until thread is really stopped
+        # R3-05: serialize against a concurrent reconnect()/_unload_blocking() so overlapping
+        # calls cannot orphan a running bus. If unload already ran, do not resurrect the bus.
+        with self._lifecycle_lock:
+            if self._shutdown:
+                LOGGER.debug("[Gateway] [Id: %d] Gateway is unloaded - not reconnecting.", self.dev_id)
+                return
+            try:
+                LOGGER.info("[Gateway] [Id: %d] Connection Restart", self.dev_id)
+                self._bus.stop()
                 if self._bus.is_alive():
-                    LOGGER.warning("[Gateway] [Id: %d] Bus thread did not stop within 10s. Starting new connection anyway.", self.dev_id)
-            LOGGER.debug("[Gateway] [Id: %d] Connection stopped", self.dev_id)
-            self._init_bus()
-            self._bus.start()
-        except Exception as e:
-            LOGGER.exception(f"[Gateway] [Id: {self.dev_id}] {e}")
+                    self._bus.join(10)    # wait until thread is really stopped
+                    if self._bus.is_alive():
+                        LOGGER.warning("[Gateway] [Id: %d] Bus thread did not stop within 10s. Starting new connection anyway.", self.dev_id)
+                LOGGER.debug("[Gateway] [Id: %d] Connection stopped", self.dev_id)
+                self._init_bus()
+                self._bus.start()
+            except Exception as e:
+                LOGGER.exception(f"[Gateway] [Id: {self.dev_id}] {e}")
 
 
     async def async_setup(self):
@@ -440,11 +471,15 @@ class EnOceanGateway:
 
     def _unload_blocking(self):
         """Stop the bus thread. BLOCKING - called via executor from async_unload."""
-        self._bus.stop()
-        if self._bus.is_alive():
-            self._bus.join(10)    # never wait forever: a hanging bus thread would block HA shutdown/reload
+        # R3-05: mark shutdown and stop under the lifecycle lock so a concurrent reconnect()
+        # either runs fully before us or becomes a no-op afterwards - never resurrects the bus.
+        with self._lifecycle_lock:
+            self._shutdown = True
+            self._bus.stop()
             if self._bus.is_alive():
-                LOGGER.warning("[Gateway] [Id: %d] Bus thread did not stop within 10s.", self.dev_id)
+                self._bus.join(10)    # never wait forever: a hanging bus thread would block HA shutdown/reload
+                if self._bus.is_alive():
+                    LOGGER.warning("[Gateway] [Id: %d] Bus thread did not stop within 10s.", self.dev_id)
 
     def unload(self):
         """Deprecated synchronous variant of async_unload, kept for compatibility.
