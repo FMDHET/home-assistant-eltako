@@ -6,12 +6,22 @@ from custom_components.eltako.gateway import *
 from custom_components.eltako import config_helpers
 import yaml
 
-# mock update of Home Assistant
-EnOceanGateway._register_device = mock.Mock(return_value=None)
-EnOceanGateway._init_bus = mock.Mock(return_value=None)
-EnOceanGateway.add_connection_state_changed_handler = mock.Mock(return_value=None)
-RS485SerialInterface.__init__ = mock.Mock(return_value=None)
-asyncio.get_event_loop = mock.Mock(return_value=None)
+# R3D-09: scope the class monkeypatches to THIS module (restore in tearDownModule) instead of
+# mutating class/stdlib state process-wide at import time, which made the whole suite
+# selection-/order-dependent. Dropped two former patches: `asyncio.get_event_loop` (HassMock
+# acquires a loop itself, and the gateway no longer calls get_event_loop after R3D-08) and
+# `RS485SerialInterface.__init__` (wrong class - production uses RS485SerialInterfaceV2 - and
+# _init_bus is mocked anyway, so no bus is ever constructed here).
+_PATCHED = {}
+
+def setUpModule():
+    for name in ("_register_device", "_init_bus", "add_connection_state_changed_handler"):
+        _PATCHED[name] = getattr(EnOceanGateway, name)
+        setattr(EnOceanGateway, name, mock.Mock(return_value=None))
+
+def tearDownModule():
+    for name, orig in _PATCHED.items():
+        setattr(EnOceanGateway, name, orig)
 
 class TestGateway(TestCase):
 

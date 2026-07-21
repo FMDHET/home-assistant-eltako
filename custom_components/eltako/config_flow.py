@@ -4,6 +4,7 @@
 import voluptuous as vol
 
 import ipaddress
+import socket
 
 from homeassistant import config_entries
 from homeassistant.helpers import device_registry as dr
@@ -178,14 +179,33 @@ class EltakoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if gateway_device_type == GatewayDeviceType.VirtualNetworkAdapter:
             return True
 
-        # check ip address for esp2/3 over tcp
+        # check ip address / hostname for esp2/3 over tcp
         if GatewayDeviceType.is_lan_gateway(gateway_device_type):
+            # R3D-01: accept a HOSTNAME / mDNS `.local` name too, not only an IP literal.
+            # The runtime (socket.connect in HardenedTCP2SerialCommunicator) resolves names,
+            # so IP-only validation here wrongly blocked adding a LAN gateway addressed by name.
+            # R3D-01 review (Bug 2): reject an empty/blank address up front - getaddrinfo("")
+            # resolves to loopback and would otherwise wrongly pass.
+            if not serial_path or not serial_path.strip():
+                LOGGER.debug("[%s] Empty serial path/address for LAN gateway.", LOGGER_PREFIX_CONFIG_FLOW)
+                return False
             try:
                 ipaddress.ip_address(serial_path)
                 LOGGER.debug("[%s] Found valid IP Address %s.", LOGGER_PREFIX_CONFIG_FLOW, serial_path)
                 return True
             except ValueError:
-                LOGGER.debug("[%s] serial_path: %s is no valid IP Address", LOGGER_PREFIX_CONFIG_FLOW, serial_path)
+                pass
+            # not an IP literal -> accept if it resolves (getaddrinfo blocks -> executor)
+            try:
+                await self.hass.async_add_executor_job(socket.getaddrinfo, serial_path, None)
+                LOGGER.debug("[%s] Resolved hostname %s.", LOGGER_PREFIX_CONFIG_FLOW, serial_path)
+                return True
+            except (OSError, UnicodeError):
+                # R3D-01 review (Bug 1): getaddrinfo runs the name through the idna codec and
+                # raises UnicodeError (a ValueError subclass, NOT an OSError) for malformed names
+                # (leading dot, '..', a label > 63 chars). Catch it too so a mistyped `.local`
+                # name is reported as invalid instead of crashing the config flow.
+                LOGGER.debug("[%s] serial_path: %s is neither an IP address nor a resolvable hostname", LOGGER_PREFIX_CONFIG_FLOW, serial_path)
                 return False
 
         # check serial ports / usb

@@ -3,7 +3,5 @@ pyserial-asyncio
 eltako14bus==0.0.73
 enocean>=0.60.1
 homeassistant
-termcolor
-StrEnum
 esp2-gateway-adapter==0.2.21
 pytest
