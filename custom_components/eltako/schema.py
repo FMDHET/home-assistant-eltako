@@ -51,11 +51,20 @@ def _get_sender_schema(supported_sender_eep) -> vol.Schema:
         }
     )
 
-def _get_receiver_schema(supported_sender_eep) -> vol.Schema:
-    return _get_sender_schema(supported_sender_eep).extend({
-        # N5: cv.Number is not public and lets floats through; a gateway id is a positive int
-        vol.Optional(CONF_GATEWAY_ID, default=None): vol.Any(None, cv.positive_int),
-    })
+def _validate_climate_target_temps(conf: dict) -> dict:
+    """R3D-16: reject min_target_temperature >= max_target_temperature. It was silently
+    accepted, giving the climate entity an inverted/degenerate setpoint range."""
+    lo = conf.get(CONF_MIN_TARGET_TEMPERATURE)
+    hi = conf.get(CONF_MAX_TARGET_TEMPERATURE)
+    if lo is not None and hi is not None and lo >= hi:
+        raise vol.Invalid(
+            f"{CONF_MIN_TARGET_TEMPERATURE} ({lo}) must be less than {CONF_MAX_TARGET_TEMPERATURE} ({hi})"
+        )
+    return conf
+
+# R3D-05: removed the dead `_get_receiver_schema` (never referenced; it only added a
+# `gateway_id` under a device `sender:`, which no code reads and which - because the nested
+# sender schema is not ALLOW_EXTRA - would have failed the whole config as an extra key).
 
 class EltakoPlatformSchema(ABC):
     """Voluptuous schema for Eltako platform entity configuration."""
@@ -274,6 +283,7 @@ class ClimateSchema(EltakoPlatformSchema):
                 vol.Optional(CONF_COOLING_MODE): CONF_COOLING_MODE_SCHEMA                           # if not provided cooling is not supported
             }
         ),
+        _validate_climate_target_temps,   # R3D-16: min < max
     )
 
 class GatewaySchema(EltakoPlatformSchema):
@@ -290,9 +300,14 @@ class GatewaySchema(EltakoPlatformSchema):
             vol.Optional(CONF_GATEWAY_AUTO_RECONNECT, default=True): cv.boolean,
             vol.Optional(CONF_GATEWAY_ADDRESS): cv.string,
             vol.Optional(CONF_GATEWAY_MESSAGE_DELAY, default=0.01): cv.positive_float,
-            vol.Optional(CONF_GATEWAY_PORT, default=5100): cv.port,
-            vol.Optional(CONF_GATEWAY_RECONNECTION_TIMEOUT, default=15): cv.positive_float,       # LAN gateways only
-            vol.Optional(CONF_GATEWAY_TCP_KEEP_ALIVE_TIMEOUT, default=30): cv.positive_float,     # LAN gateways only
+            # R3D-02: no schema default. eltako_integration_init falls back to VIRT_GW_PORT for
+            # the Virtual Network Gateway and 5100 for physical LAN gateways; a schema default of
+            # 5100 here overrode that, so a VNG left at defaults bound 5100 instead of VIRT_GW_PORT.
+            vol.Optional(CONF_GATEWAY_PORT): cv.port,
+            # R3D-03: cv.positive_float permits 0; a 0 timeout makes the LAN keep-alive/reconnect
+            # loop spin/flap. Require a sane minimum.
+            vol.Optional(CONF_GATEWAY_RECONNECTION_TIMEOUT, default=15): vol.All(vol.Coerce(float), vol.Range(min=1)),       # LAN gateways only
+            vol.Optional(CONF_GATEWAY_TCP_KEEP_ALIVE_TIMEOUT, default=30): vol.All(vol.Coerce(float), vol.Range(min=1)),     # LAN gateways only
             vol.Optional(CONF_DEVICES): vol.All(vol.Schema({
                 **BinarySensorSchema.platform_node(),
                 **LightSchema.platform_node(),

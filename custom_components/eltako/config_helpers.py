@@ -71,8 +71,11 @@ def get_general_settings_from_configuration(hass: HomeAssistant) -> dict:
     # enable_teach_in_buttons) must not leak into the shared module-level DEFAULT_GENERAL_SETTINGS
     # (it would then be observed by every default-config gateway) nor into the user's parsed config.
     settings = dict(DEFAULT_GENERAL_SETTINGS)
-    if hass and CONF_GERNERAL_SETTINGS in hass.data[DATA_ELTAKO][ELTAKO_CONFIG]:
-        settings = dict(hass.data[DATA_ELTAKO][ELTAKO_CONFIG][CONF_GERNERAL_SETTINGS])
+    # R3D-06: the `hass and` short-circuit only guarded `hass is None`, NOT the nested
+    # [DATA_ELTAKO][ELTAKO_CONFIG] index it wrapped (KeyError if either is unset). Chain .get().
+    cfg = (hass.data.get(DATA_ELTAKO, {}) or {}).get(ELTAKO_CONFIG, {}) if hass else {}
+    if CONF_GERNERAL_SETTINGS in cfg:
+        settings = dict(cfg[CONF_GERNERAL_SETTINGS])
 
     # LOGGER.debug(f"General Settings: {settings}")
 
@@ -189,7 +192,10 @@ def get_id_from_gateway_name(dev_name: str) -> int | None:
     """
     if dev_name is None:
         return None
-    match = re.search(r'\(Id:\s*(\d+)\)', dev_name)
+    # R3D-07: anchor to the TRAILING marker. get_gateway_name always appends "(Id: <id>)" last,
+    # so a gateway whose user name itself contains "(Id: N)" (e.g. 'Rack (Id: 99) - mgw-lan
+    # (Id: 5)') must resolve to the real id (5), not the first match (99).
+    match = re.search(r'\(Id:\s*(\d+)\)\s*$', dev_name)
     if match is None:
         return None
     return int(match.group(1))

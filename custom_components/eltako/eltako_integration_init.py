@@ -331,7 +331,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     gateway_device_type = GatewayDeviceType.find(gateway_config[CONF_DEVICE_TYPE])    # from configuration
     if gateway_device_type is None:
         raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] USB device {gateway_config[CONF_DEVICE_TYPE]} is not supported!!!")
-    if GatewayDeviceType.is_lan_gateway(gateway_device_type):
+    # R3D-04: the Virtual Network Gateway is a LAN type but has no external address to connect
+    # to (it binds 0.0.0.0 and ignores the field) - do not require `address:` for it.
+    if GatewayDeviceType.is_lan_gateway(gateway_device_type) and gateway_device_type != GatewayDeviceType.VirtualNetworkAdapter:
         if gateway_config.get(CONF_GATEWAY_ADDRESS, None) is None:
             raise ConfigEntryError(f"[{LOG_PREFIX_INIT}] Missing field '{CONF_GATEWAY_ADDRESS}' for LAN Gateway (id: {gateway_id})")
 

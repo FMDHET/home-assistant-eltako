@@ -6,6 +6,7 @@ import inspect
 import sys
 import os
 import json
+import tempfile
 
 from tests.test_metadata import MetadataTest
 
@@ -77,9 +78,16 @@ class TestSendMessageService(unittest.IsolatedAsyncioTestCase):
             eep_init_args = sorted([param.name for param in sig.parameters.values() if param.kind == param.POSITIONAL_OR_KEYWORD and param.name != 'self'])
             text += f"* `{eep_name}`: {', '.join(eep_init_args)}\n"
 
-        file='./docs/service-send-message/eep-params.md' 
+        # R3D-11: write to a TEMP file, not the git-tracked ./docs/... artifact. Writing the
+        # tracked doc on every test run dirtied the working tree (the repo's "revert
+        # eep-params.md before commit" note was exactly this) and was CWD-dependent. This keeps
+        # a smoke test of the generation logic without mutating the repo.
+        file = os.path.join(tempfile.gettempdir(), 'eltako-eep-params.md')
         with open(file, 'w') as filetowrite:
             filetowrite.write(text)
+        # R3D-11 review: assert on GENERATED content, not just the constant header - at least
+        # one EEP parameter line must have been produced.
+        self.assertIn('* `A5-', text)
 
 
 

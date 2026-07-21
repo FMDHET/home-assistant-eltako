@@ -62,7 +62,8 @@ class EnOceanGateway:
 
         """Initialize the Eltako gateway."""
 
-        self._loop = asyncio.get_event_loop()
+        # R3D-08: removed a dead `self._loop = asyncio.get_event_loop()` - it was never read
+        # (and get_event_loop() in a sync context is discouraged).
         self._bus_task = None
         self.baud_rate = baud_rate
         self._auto_reconnect = auto_reconnect
