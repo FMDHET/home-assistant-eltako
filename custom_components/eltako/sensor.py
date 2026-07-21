@@ -9,6 +9,7 @@ from eltakobus.eep import *
 from eltakobus.message import ESP2Message
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
@@ -34,7 +35,6 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.typing import ConfigType
 
 from .device import *
@@ -499,8 +499,27 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class EltakoSensor(EltakoEntity, RestoreEntity, SensorEntity):
-    """Representation of an  Eltako sensor device such as a power meter."""
+class EltakoSensor(EltakoEntity, RestoreSensor):
+    """Representation of an  Eltako sensor device such as a power meter.
+
+    R3-10: RestoreSensor (= SensorEntity + RestoreEntity) so async_get_last_sensor_data()
+    can restore the UNIT-INDEPENDENT native value instead of the display-converted state
+    string (which would double-convert on imperial installs / user unit overrides)."""
+
+    async def async_added_to_hass(self) -> None:
+        # R3-10: prefer the native stored value over the base's string-parse of the converted
+        # state. Set it first; the base restore path (EltakoEntity) is guarded on native_value
+        # being None, so it then skips load_value_initially. Text sensors (WindowHandle) still
+        # work - their native_value is the string - and the string parser remains the fallback
+        # when no sensor extra data was stored (e.g. entries from older versions).
+        if getattr(self, '_attr_native_value', None) is None:
+            try:
+                last_sensor_data = await self.async_get_last_sensor_data()
+                if last_sensor_data is not None and last_sensor_data.native_value is not None:
+                    self._attr_native_value = last_sensor_data.native_value
+            except Exception:
+                LOGGER.debug("[%s %s] Could not restore native sensor value.", self._attr_ha_platform, self.dev_id)
+        await super().async_added_to_hass()
 
     def __init__(self, platform: str, gateway: EnOceanGateway,
                  dev_id: AddressExpression, dev_name: str, dev_eep: EEP, description: EltakoSensorEntityDescription,

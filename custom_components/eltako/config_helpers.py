@@ -67,10 +67,13 @@ def get_device_conf(config: ConfigType, key: str, extra_keys:list[str]=[]) -> De
     return None
 
 def get_general_settings_from_configuration(hass: HomeAssistant) -> dict:
-    settings = DEFAULT_GENERAL_SETTINGS
+    # R3-25: return a COPY. A downstream in-place mutation (e.g. eltako_integration_init sets
+    # enable_teach_in_buttons) must not leak into the shared module-level DEFAULT_GENERAL_SETTINGS
+    # (it would then be observed by every default-config gateway) nor into the user's parsed config.
+    settings = dict(DEFAULT_GENERAL_SETTINGS)
     if hass and CONF_GERNERAL_SETTINGS in hass.data[DATA_ELTAKO][ELTAKO_CONFIG]:
-        settings = hass.data[DATA_ELTAKO][ELTAKO_CONFIG][CONF_GERNERAL_SETTINGS]
-    
+        settings = dict(hass.data[DATA_ELTAKO][ELTAKO_CONFIG][CONF_GERNERAL_SETTINGS])
+
     # LOGGER.debug(f"General Settings: {settings}")
 
     return settings

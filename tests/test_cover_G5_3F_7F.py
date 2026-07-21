@@ -19,7 +19,8 @@ class TestCover(unittest.TestCase):
         self.last_sent_command = msg
 
     def create_cover(self) -> EltakoCover:
-        settings = DEFAULT_GENERAL_SETTINGS
+        # R3-25: copy - do not mutate the shared module-level DEFAULT_GENERAL_SETTINGS in place.
+        settings = dict(DEFAULT_GENERAL_SETTINGS)
         settings[CONF_FAST_STATUS_CHANGE] = True
         gateway = GatewayMock(settings)
         dev_id = AddressExpression.parse('00-00-00-01')
@@ -47,7 +48,8 @@ class TestCover(unittest.TestCase):
         return ec
 
     def create_blind(self) -> EltakoCover:
-        settings = DEFAULT_GENERAL_SETTINGS
+        # R3-25: copy - do not mutate the shared module-level DEFAULT_GENERAL_SETTINGS in place.
+        settings = dict(DEFAULT_GENERAL_SETTINGS)
         settings[CONF_FAST_STATUS_CHANGE] = True
         gateway = GatewayMock(settings)
         dev_id = AddressExpression.parse('00-00-00-01')
@@ -299,10 +301,13 @@ class TestCover(unittest.TestCase):
         self.assertEqual(ec.state, None)
         
         ec.load_value_initially(LatestStateMock('opening', {'current_position': 55, 'current_tilt_position': 20}))
+        # R3-17: a moving state is restored as STOPPED (the move ended while HA was down and
+        # nothing would ever clear the flag); is_closed is derived from the last position
+        # (55 != 0 -> not closed) -> HA reports 'open'. Position/tilt are still restored.
         self.assertEqual(ec.is_closed, False)
-        self.assertEqual(ec.is_opening, True)
+        self.assertEqual(ec.is_opening, False)
         self.assertEqual(ec.is_closing, False)
-        self.assertEqual(ec.state, 'opening')
+        self.assertEqual(ec.state, 'open')
         self.assertEqual(ec.current_cover_position, 55)
         self.assertEqual(ec.current_cover_tilt_position, 20)
 
@@ -313,10 +318,12 @@ class TestCover(unittest.TestCase):
         self.assertEqual(ec.state, None)
         
         ec.load_value_initially(LatestStateMock('closing', {'current_position': 33, 'current_tilt_position': 10}))
+        # R3-17: restored as STOPPED; is_closed derived from position (33 != 0 -> not closed)
+        # -> HA reports 'open'. Position/tilt are still restored.
         self.assertEqual(ec.is_closed, False)
         self.assertEqual(ec.is_opening, False)
-        self.assertEqual(ec.is_closing, True)
-        self.assertEqual(ec.state, 'closing')
+        self.assertEqual(ec.is_closing, False)
+        self.assertEqual(ec.state, 'open')
         self.assertEqual(ec.current_cover_position, 33)
         self.assertEqual(ec.current_cover_tilt_position, 10)
 

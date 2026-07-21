@@ -20,7 +20,7 @@ from esp2_gateway_adapter.esp3_serial_com import ESP3SerialCommunicator
 
 from .tcp2serial_hardened import HardenedTCP2SerialCommunicator
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, dispatcher_send
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceRegistry
@@ -456,9 +456,15 @@ class EnOceanGateway:
 
     def send_message(self, msg: ESP2Message):
         """Put message on RS485 bus. First the message is put onto HA event bus so that other automations can react on messages."""
+        # R3-15: dispatch ONLY the per-gateway send event here. The global-bus publish happens
+        # centrally in _callback_send_message_to_serial_bus (and only when the bus is actually
+        # active), so a service-sent telegram is no longer published to the global bus TWICE
+        # (VNG clients received the frame twice; entities processed it twice). The entity send
+        # path (EltakoEntity.send_message) already goes only through this per-gateway event.
+        # NOTE (Welle C, AM1/AN2): global-bus routing semantics are revisited there; publishing
+        # exactly once, when the telegram is truly put on the bus, is the consistent baseline.
         event_id = config_helpers.get_bus_event_type(gateway_id=self.dev_id, function_id=SIGNAL_SEND_MESSAGE)
         dispatcher_send(self.hass, event_id, msg)
-        dispatcher_send(self.hass, ELTAKO_GLOBAL_EVENT_BUS_ID, {'gateway':self, 'esp2_msg': msg})
 
 
     async def async_unload(self):
@@ -494,8 +500,15 @@ class EnOceanGateway:
         LOGGER.debug("[Gateway] [Id: %d] Was stopped.", self.dev_id)
 
 
+    @callback
     def _callback_send_message_to_serial_bus(self, msg):
-        """Callback method call from HA when receiving events from serial bus."""
+        """Callback method call from HA when receiving events from serial bus.
+
+        R3-24: @callback so HA runs this inline on the event-loop in dispatch order. The body
+        is fully non-blocking (is_active check + create_task + dispatcher_send); without the
+        annotation HA schedules the dispatcher target as an executor job, so two fast
+        consecutive sends (e.g. a rocker press then release) could run concurrently on pool
+        threads and reorder."""
         if self._bus.is_active():
             if isinstance(msg, ESP2Message):
                 LOGGER.debug("[Gateway] [Id: %d] Send message: %s - Serialized: %s", self.dev_id, msg, msg.serialize().hex())

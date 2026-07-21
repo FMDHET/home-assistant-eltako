@@ -1,4 +1,5 @@
 import socket
+import select
 import threading
 import queue
 import time
@@ -162,6 +163,26 @@ class VirtualNetworkGateway(EnOceanGateway):
 
             # send messages coming in and out (run_flag = this server generation's stop token)
             while run_flag.is_set():
+                # R3-23: the VNG is (for now) a one-way forwarder - a client's inbound bytes are
+                # not routed yet (see AN2/Welle C). Drain and discard them non-blocking so unread
+                # data cannot fill the kernel receive buffer and back-pressure the client's TCP
+                # writes into a stall. An EOF (recv b'') means the client closed -> exit cleanly.
+                try:
+                    readable, _, _ = select.select([conn], [], [], 0)
+                    if readable:
+                        drained = conn.recv(4096)
+                        if drained == b'':
+                            LOGGER.debug("[%s] Client %s closed the connection.", LOGGING_PREFIX_VIRT_GW, addr)
+                            break
+                        LOGGER.debug("[%s] Discarding %d byte(s) from client %s (client->VNG routing not implemented yet).", LOGGING_PREFIX_VIRT_GW, len(drained), addr)
+                except ValueError:
+                    # R3-23 review: select() on a socket closed concurrently by stop_tcp_server()
+                    # (fileno == -1) raises ValueError, not OSError. Treat it as a disconnect and
+                    # exit quietly instead of logging an ERROR+traceback during shutdown/reload.
+                    break
+                except OSError:
+                    raise   # socket error -> let the outer handler close the connection
+
                 # Receive data from the client
                 try:
                     t, msg = self.incoming_message_queues[conn].get(timeout=1)
@@ -261,8 +282,12 @@ class VirtualNetworkGateway(EnOceanGateway):
                         continue
 
                     except Exception as e:
-                        LOGGER.error(f"[{LOGGING_PREFIX_VIRT_GW}] An error occurred: {e}", exc_info=True, stack_info=True)
-                        self._fire_connection_state_changed_event(False)
+                        # R3-22: a transient accept() error does NOT mean the server lost its
+                        # connection - the listener socket is still open and the loop keeps
+                        # running. Do not fire a (false) disconnect; back off briefly so a
+                        # persistent error cannot spin the loop and flood the log.
+                        LOGGER.error(f"[{LOGGING_PREFIX_VIRT_GW}] Error accepting a client connection: {e}", exc_info=True, stack_info=True)
+                        time.sleep(1)
 
         except Exception as e:
             # H8a: bind/listen errors (e.g. port already in use) must not leave a dead

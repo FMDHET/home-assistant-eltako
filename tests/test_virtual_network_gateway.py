@@ -82,6 +82,28 @@ class TestVirtualNetworkGateway(unittest.TestCase):
         finally:
             vng.stop_tcp_server()
 
+    def test_r3_23_client_eof_detected_via_drain(self):
+        """R3-23: the handler now drains the client socket, so a client half-close (EOF) is
+        detected promptly and the handler exits. Without the drain the socket was never read,
+        so a write-shut client was never noticed here (and its inbound bytes would pile up)."""
+        vng = VNGMock(get_free_port())
+        vng.start_tcp_server()
+        try:
+            client = connect_when_listening(vng.port)
+            client.settimeout(5)
+            self.assertIn(b'IM2M', client.recv(1024))   # connected + first keep-alive
+
+            # client stops writing -> server's drain recv() reads EOF (b'') -> handler exits
+            client.shutdown(socket.SHUT_WR)
+
+            deadline = time.time() + 5
+            while vng.connected_clients and time.time() < deadline:
+                time.sleep(0.1)
+            self.assertEqual(vng.connected_clients, [], "server did not detect the client EOF via the drain")
+            client.close()
+        finally:
+            vng.stop_tcp_server()
+
     def test_forward_message_survives_disconnecting_client(self):
         """H8b: a client without a queue (mid-disconnect) must not crash the loop."""
         vng = VNGMock(get_free_port())

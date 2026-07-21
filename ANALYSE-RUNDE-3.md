@@ -109,7 +109,7 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 - **Test:** Neuer `test_binary_sensor_F6_01_01.py`: Push+Release → 2 Events auf HassMock-Bus inkl. `push_duration_in_sec` (heute: `fired_events` leer).
 - **Aufwand:** S
 
-#### R3-10 — Sensor-Restore liest den einheiten-KONVERTIERTEN State-String in `native_value` (H2-Rest) · CONFIRMED (Design)
+#### R3-10 — Sensor-Restore liest den einheiten-KONVERTIERTEN State-String in `native_value` (H2-Rest) · CONFIRMED (Design) · ✅ ERLEDIGT v2.13.0
 - **Fundstelle:** [sensor.py:502-529](custom_components/eltako/sensor.py#L502) (`load_value_initially` parst `latest_state.state`)
 - **Problem:** `State.state` ist nach HAs Einheitenkonvertierung (°F/mph/gal bei Imperial-Installationen oder User-Override). Der Wert wird als nativ interpretiert → Doppel-Konvertierung nach jedem Neustart (22,9 °C → gespeichert 73,2 → angezeigt 163,8 °F bis zum nächsten Telegramm); bei TOTAL_INCREASING (Wasser/Gas) Statistik-Spike + „Meter-Reset". Für die (metrische) Nutzer-Installation gering, generell aber falsch.
 - **Fix:** `EltakoSensor` von `RestoreSensor` ableiten; in `async_added_to_hass` `(await self.async_get_last_sensor_data()).native_value` bevorzugen; String-Parser nur als Fallback (Text-Sensoren wie WindowHandle behalten den String-Pfad).
@@ -137,14 +137,14 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 - **Test:** EltakoSwitch (M5-38-08) + Regular4BSMessage von eigener Adresse → kein WARNING-Log, State unverändert.
 - **Aufwand:** S
 
-#### R3-14 — Dimmbares Licht: `turn_on` ohne Helligkeit sendet immer 100 % statt der letzten Helligkeit · CONFIRMED ⚠️ Verhaltensänderung
+#### R3-14 — Dimmbares Licht: `turn_on` ohne Helligkeit sendet immer 100 % statt der letzten Helligkeit · CONFIRMED ⚠️ Verhaltensänderung · ✅ ERLEDIGT v2.13.0 (Nutzerwahl: Schalt-EIN cmd 0x01 → Aktor-Memory; Hardware-Verifikation offen)
 - **Fundstelle:** [light.py:105](custom_components/eltako/light.py#L105) (`kwargs.get(ATTR_BRIGHTNESS, 255)`)
 - **Problem:** Einfaches Einschalten (Dashboard-Toggle, Automation ohne brightness) überschreibt die FUD14-Dimm-Memory mit 100 % — nachts volle Helligkeit statt der letzten/Memory-Stufe. (HA-Konvention und Eltako-Tasterverhalten: letzte Helligkeit.)
 - **Fix-Optionen:** (a) `kwargs.get(ATTR_BRIGHTNESS, self._attr_brightness or 255)`; (b) ohne explizite brightness ein Switching-ON (cmd 0x01) senden → Aktor nutzt seine Memory. **Vor Umsetzung Nutzer-Präferenz einholen** (sichtbare Verhaltensänderung).
 - **Test:** Gedimmt-Status einspeisen (z. B. 45 %), `turn_on()` ohne kwargs → gesendetes Payload trägt 45 % bzw. cmd 0x01 (heute 100 %).
 - **Aufwand:** S
 
-#### R3-15 — Vom Send-Service gesendete Telegramme werden doppelt auf den globalen Bus dispatcht · CONFIRMED (Scope korrigiert)
+#### R3-15 — Vom Send-Service gesendete Telegramme werden doppelt auf den globalen Bus dispatcht · CONFIRMED (Scope korrigiert) · ✅ ERLEDIGT v2.13.0 (GLOBAL nur zentral im _callback; AM1/AN2 = Welle C)
 - **Fundstelle:** [gateway.py:417-421](custom_components/eltako/gateway.py#L417) (`send_message`: event_id **und** GLOBAL) + [gateway.py:463](custom_components/eltako/gateway.py#L463) (`_callback_send_message_to_serial_bus`: GLOBAL erneut)
 - **Scope-Korrektur ggü. Finder:** Entity-Kommandos (light/switch/…) nutzen `EltakoEntity.send_message` (device.py:217, nur event_id) → **nicht** betroffen. Betroffen sind Aufrufer von `gateway.send_message` = der **Send-Message-Service** (und direkte Nutzer): bei aktivem Bus 2× GLOBAL → VNG-Clients erhalten den Frame doppelt, Entities verarbeiten ihn doppelt; bei inaktivem Bus 1× — die Inkonsistenz zeigt, dass eine der beiden Stellen ein Leftover ist.
 - **Fix:** GLOBAL-Dispatch aus `_callback_send_message_to_serial_bus` entfernen (dann deckt `send_message` auch den Disconnected-Fall) — **oder** aus `send_message`; nur eine Stelle darf global publizieren. Entity-Pfad beachten: dessen einziges GLOBAL kommt heute aus dem `_callback` — bei Variante „aus _callback entfernen" muss `EltakoEntity.send_message` das GLOBAL-Dispatch übernehmen (sonst verlieren VNG/andere Entities die Entity-Kommandos!). Sauberste Lösung: GLOBAL-Dispatch zentral in `_callback` belassen und stattdessen aus `gateway.send_message` entfernen.
@@ -160,13 +160,13 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 
 ### 🟢 NIEDRIG
 
-#### R3-17 — Cover-Restore friert `opening`/`closing` dauerhaft ein · CONFIRMED
+#### R3-17 — Cover-Restore friert `opening`/`closing` dauerhaft ein · CONFIRMED · ✅ ERLEDIGT v2.13.0
 [cover.py:112-119](custom_components/eltako/cover.py#L112-L119): STATE_OPENING/CLOSING werden 1:1 restauriert; die Fahrt endete aber, während HA aus war — kein Telegramm/Timeout cleart je das Flag. Fix: als „gestoppt, Endlage unbekannt" restaurieren (`is_opening=is_closing=False`, `is_closed` aus Position ableiten); bestehende Tests `test_initial_loading_opening/closing` anpassen (asserten heute das Einfrieren). Aufwand S. *(Verwandt mit AV1, aber eigenständige Branches.)*
 
-#### R3-18 — Cover-Tilt: 2 Rest-Fenster, in denen ein verspätetes STOP eine neue Fahrt anhält · PLAUSIBLE
+#### R3-18 — Cover-Tilt: 2 Rest-Fenster, in denen ein verspätetes STOP eine neue Fahrt anhält · PLAUSIBLE · ✅ ERLEDIGT v2.13.0
 [cover.py ~404]: Post-Sleep-STOP wird nicht gegen Supersession re-validiert; `self._tilt_task`-Zuweisung nach eagerem Task-Start. Fix: Generationszähler (`_move_generation`), STOP nur bei unveränderter Generation + `self._tilt_task is asyncio.current_task()`. Aufwand M; Test mit kontrollierbarem Sleep-Future.
 
-#### R3-19 — Dimmbares Licht mit F6-Sender: brightness wird still verworfen, UI bestätigt sie optimistisch · PLAUSIBLE
+#### R3-19 — Dimmbares Licht mit F6-Sender: brightness wird still verworfen, UI bestätigt sie optimistisch · PLAUSIBLE · ✅ ERLEDIGT v2.13.0
 [light.py ~118-141]: F6-Branch kann brightness nicht transportieren; Fast-Status schreibt sie trotzdem. Fix: bei F6-Sender + expliziter brightness einmalig warnen (oder ColorMode.ONOFF), Fast-Status-Block für F6 die brightness überspringen. Aufwand S.
 
 #### R3-20 — Gerät in `sensor:` UND `binary_sensor:` → doppelte unique_id, HA verwirft die zweite Entity mit ERROR · CONFIRMED (per Inspektion) · ✅ ERLEDIGT v2.12.0
@@ -175,19 +175,19 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 #### R3-21 — `validate_actuators_dev_and_sender_id` läuft auf der Sensor-Plattform → Warn-Spam für korrekte dezentrale Sensoren · CONFIRMED · ✅ ERLEDIGT v2.12.0
 [sensor.py:479] vs. binary_sensor.py:88 (überspringt bewusst). Funk-Sensoren (Wetterstation 05-…, FT55 FE-…) scheitern an beiden dev_id-Checks → ~1 Warnung pro Entity pro Start; auf Transceivern warnen auch die Gateway-Felder (dev_id 00-00-00-00). Fix: Aufruf entfernen (wie binary_sensor) oder auf Entities mit Sender beschränken. Aufwand S. *(Nach R3-12-Fix würde der Spam sonst sogar zunehmen — R3-12 und R3-21 zusammen umsetzen!)*
 
-#### R3-22 — VNG-Accept-Loop: transienter accept-Fehler feuert False (nie wieder True) und retried ohne Backoff · PLAUSIBLE
+#### R3-22 — VNG-Accept-Loop: transienter accept-Fehler feuert False (nie wieder True) und retried ohne Backoff · PLAUSIBLE · ✅ ERLEDIGT v2.13.0
 [virtual_network_gateway.py ~252-254]. Fix: im except keinen Connection-State feuern (Listener lebt ja), `time.sleep(1)`-Backoff. Aufwand S.
 
-#### R3-23 — VNG `handle_client` liest nie vom Client-Socket: Client→VNG-Bytes stauen sich (TCP-Backpressure bis zum Freeze des Client-Bus-Threads) · CONFIRMED (einseitig per Code) / Konsequenz PLAUSIBLE
+#### R3-23 — VNG `handle_client` liest nie vom Client-Socket: Client→VNG-Bytes stauen sich (TCP-Backpressure bis zum Freeze des Client-Bus-Threads) · CONFIRMED (einseitig per Code) / Konsequenz PLAUSIBLE · ✅ ERLEDIGT v2.13.0 (non-blocking drain; Review-Fix: `select`-`ValueError` beim Shutdown → break)
 [virtual_network_gateway.py ~153]: Nur Write + Keepalive, kein `recv`. Kommandos einer Zweit-HA sind stille No-ops (deckt sich mit AN2), und ungelesene Bytes füllen den Kernel-Buffer, bis der **Client** beim Senden blockiert. Fix (minimal): pro Loop-Iteration non-blocking drainen und verwerfen (debug-loggen); vollwertig: 14-Byte-ESP2-Frames parsen und an das passende Gateway weiterleiten (= Teil von AN2/Welle C). Aufwand S (drain) / M–L (bridge).
 
-#### R3-24 — `_callback_send_message_to_serial_bus` ohne `@callback`: HA fährt den Dispatcher-Target im Executor → Press/Release können sich umsortieren · PLAUSIBLE
+#### R3-24 — `_callback_send_message_to_serial_bus` ohne `@callback`: HA fährt den Dispatcher-Target im Executor → Press/Release können sich umsortieren · PLAUSIBLE · ✅ ERLEDIGT v2.13.0
 [gateway.py:453]: Plain-Funktion ⇒ HassJobType.Executor ⇒ zwei schnelle dispatcher_send-Aufrufe laufen konkurrent auf Pool-Threads; die `hass.create_task`-Reihenfolge ist nicht garantiert. Fix: `@callback` (homeassistant.core) annotieren — Body ist komplett non-blocking; läuft dann inline in Dispatch-Reihenfolge. Test: JobType-Assertion + 50× alternierende Sends → strikte Alternation. Aufwand S.
 
-#### R3-25 — Test mutiert das geteilte `DEFAULT_GENERAL_SETTINGS`-Dict (+ mutable Default-Arg in GatewayMock) · CONFIRMED
+#### R3-25 — Test mutiert das geteilte `DEFAULT_GENERAL_SETTINGS`-Dict (+ mutable Default-Arg in GatewayMock) · CONFIRMED · ✅ ERLEDIGT v2.13.0 (Review-Fund: auch Produktivcode `get_general_settings_from_configuration` gab das geteilte Objekt zurück → Copy-on-return)
 [tests/test_dimmable_light.py:23] (`settings = DEFAULT_GENERAL_SETTINGS` + in-place-Set) + [tests/mocks.py:130] (Default-Arg). Jede spätere GatewayMock läuft mit `fast_status_change=True` → Baseline ist ordnungsabhängig. Fix: `dict(DEFAULT_GENERAL_SETTINGS)` im Test; `general_settings=None` + Copy im Mock-`__init__`. Aufwand S.
 
-#### R3-26 — `strenum`-Fremdpaket statt stdlib `enum.StrEnum` · CONFIRMED
+#### R3-26 — `strenum`-Fremdpaket statt stdlib `enum.StrEnum` · CONFIRMED · ✅ ERLEDIGT v2.13.0
 [const.py:3] `from strenum import StrEnum`; manifest pinnt „StrEnum". Ab Py 3.11 stdlib-identisch verfügbar; das Fremdpaket ist ein unnötiges Supply-Chain-/Wartungs-Risiko. Fix: `from enum import StrEnum` + Requirement aus manifest.json entfernen (HA ≥ 2024 setzt Py ≥ 3.12 voraus). Aufwand S.
 
 ---
@@ -206,5 +206,5 @@ Bereits dokumentiert (Quelle `KI-Optimierungen.md` §6/§7, `ANALYSE-UND-ROADMAP
 |---|---|---|
 | **R3-A** ✅ **ERLEDIGT (v2.11.0)** | R3-01 + R3-02 (tcp2serial), R3-03 (Unit-ValueError), R3-04 (Climate-Listen), R3-05 + R3-06 (Lifecycle-Lock + Generations-Guard) | kritisch/hoch, ohne Hardware, kleiner Diff |
 | **R3-B** ✅ **ERLEDIGT (v2.12.0)** | R3-07 (Learn-Guards), R3-08 (Lib-Decode-Patch), R3-09 (F6-01-01-Event), R3-11 (Low-Battery-Invert), R3-12 + R3-21 (Validierung), R3-13 (WARNING-Filter), R3-16 (VNG is_connected), R3-20 (Dual-Listing-Dedupe) | mittel, mechanisch, gut testbar |
-| **R3-C** | R3-10 (RestoreSensor), R3-17/18 (Cover-Restore/Tilt), R3-14 ⚠️ (Nutzer fragen!), R3-15 (mit AM1/AN2 koordinieren), R3-19, R3-22/23 (VNG), R3-24 (@callback), R3-25/26 (Hygiene) | niedrig/Design, teils Verhaltensänderung |
+| **R3-C** ✅ **ERLEDIGT (v2.13.0)** | R3-10 (RestoreSensor), R3-17/18 (Cover-Restore/Tilt), R3-14 ⚠️ (Nutzer gefragt → Schalt-EIN/Aktor-Memory), R3-15 (Doppel-Dispatch entfernt; AM1/AN2 in Welle C), R3-19, R3-22/23 (VNG), R3-24 (@callback), R3-25/26 (Hygiene) | niedrig/Design, teils Verhaltensänderung |
 | **R3-D** | Vollständiger Nachhol-Pass Domänen 5+6 | Audit-Rest |
