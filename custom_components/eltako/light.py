@@ -98,24 +98,40 @@ class EltakoDimmableLight(AbstractLightEntity):
         super().__init__(platform, gateway, dev_id, dev_name, dev_eep)
         self._sender_id = sender_id
         self._sender_eep = sender_eep
+        self._f6_brightness_warned = False   # R3-19: warn only once per entity
 
-    
+
     def turn_on(self, **kwargs: Any) -> None:
         """Turn the light source on or sets a specific dimmer value."""
-        brightness = kwargs.get(ATTR_BRIGHTNESS, 255)
-        
+        # R3-14: brightness is None when the caller did not request a level (dashboard toggle,
+        # automation without brightness). In that case we send a plain switching-ON telegram so
+        # the actuator (FUD14) restores its OWN last dim level instead of being forced to 100%.
+        brightness = kwargs.get(ATTR_BRIGHTNESS)
+
         address, _ = self._sender_id
-        
+
         if self._sender_eep == A5_38_08:
-            # A-r2: round instead of truncate, and never send 0 for an ON command -
-            # HA brightness 1-2 truncated to dimming value 0, i.e. 'on' dimmed the
-            # light to 0/off (night-light automations).
-            dimming_value = max(1, round(brightness / 255.0 * 100.0)) if brightness > 0 else 0
-            dimming = CentralCommandDimming(dimming_value, 0, 1, 0, 0, 1)
-            msg = A5_38_08(command=0x02, dimming=dimming).encode_message(address)
-            self.send_message(msg)
+            if brightness is None:
+                # R3-14: plain ON (cmd 0x01) -> actuator uses its stored dim level. The resulting
+                # brightness arrives via the actuator's status telegram. (Verify on hardware.)
+                switching = CentralCommandSwitching(0, 1, 0, 0, 1)
+                msg = A5_38_08(command=0x01, switching=switching).encode_message(address)
+                self.send_message(msg)
+            else:
+                # A-r2: round instead of truncate, and never send 0 for an ON command -
+                # HA brightness 1-2 truncated to dimming value 0, i.e. 'on' dimmed the
+                # light to 0/off (night-light automations).
+                dimming_value = max(1, round(brightness / 255.0 * 100.0)) if brightness > 0 else 0
+                dimming = CentralCommandDimming(dimming_value, 0, 1, 0, 0, 1)
+                msg = A5_38_08(command=0x02, dimming=dimming).encode_message(address)
+                self.send_message(msg)
 
         elif self._sender_eep in [F6_02_01, F6_02_02]:
+            # R3-19: an F6 rocker sender is on/off only - it cannot carry a brightness. Warn once
+            # so a user configuring brightness on such a light understands it is ignored.
+            if brightness is not None and not self._f6_brightness_warned:
+                LOGGER.warning("[%s %s] Sender EEP %s (rocker) cannot set a brightness; switching fully on and ignoring the requested level.", Platform.LIGHT, str(self.dev_id), self._sender_eep.eep_string)
+                self._f6_brightness_warned = True
             address, discriminator = self._sender_id
             # in PCT14 function 02 'direct  pushbutton top on' needs to be configured
             if discriminator == "left":
@@ -124,19 +140,23 @@ class EltakoDimmableLight(AbstractLightEntity):
                 action = 3  # 0x70
             else:
                 action = 1
-                
+
             pressed_msg = F6_02_01(action, 1, 0, 0).encode_message(address)
             self.send_message(pressed_msg)
-            
+
             released_msg = F6_02_01(action, 0, 0, 0).encode_message(address)
             self.send_message(released_msg)
 
         else:
             LOGGER.warning("[%s %s] Sender EEP %s not supported.", Platform.LIGHT, str(self.dev_id), self._sender_eep.eep_string)
             return
-        
+
         if self.general_settings[CONF_FAST_STATUS_CHANGE]:
-            self._attr_brightness = brightness
+            # R3-14/R3-19: only assume a brightness optimistically when one was actually
+            # requested via an A5-38-08 dimmer command; a plain ON or an F6 rocker leaves the
+            # brightness to the actuator's status telegram.
+            if brightness is not None and self._sender_eep == A5_38_08:
+                self._attr_brightness = brightness
             self._attr_is_on = True
             self.schedule_update_ha_state()
 

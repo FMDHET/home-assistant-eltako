@@ -74,6 +74,8 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
         self._time_opens = time_opens
         self._time_tilts = time_tilts
         self._tilt_task = None  # H5: cancellable task for the tilt move/stop sequence
+        self._move_generation = 0  # R3-18: bumped by every new tilt/movement; a tilt task's
+        # post-sleep STOP is only sent if its generation is still current
         
         self._attr_supported_features = (CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.STOP)
         
@@ -109,15 +111,17 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
                 self._attr_is_closed = True
                 self._attr_current_cover_position = 0
                 self._attr_current_cover_tilt_position = 0
-            elif latest_state.state == STATE_CLOSING:
+            elif latest_state.state in (STATE_CLOSING, STATE_OPENING):
+                # R3-17: the movement ended while HA was down; nothing will ever clear a
+                # restored moving flag (no further telegram, no timeout), so the cover would
+                # be stuck showing "opening"/"closing" forever. Restore as STOPPED with the
+                # endpoint unknown and derive is_closed from the last known position.
                 self._attr_is_opening = False
-                self._attr_is_closing = True
-                self._attr_is_closed = False
-            elif latest_state.state == STATE_OPENING:
-                self._attr_is_opening = True
                 self._attr_is_closing = False
-                self._attr_is_closed = False
-            
+                pos = self._attr_current_cover_position
+                self._attr_is_closed = (pos == 0) if pos is not None else None
+
+
         except Exception:
             self._attr_current_cover_position = None
             self._attr_current_cover_tilt_position = None
@@ -385,7 +389,11 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
             # task, so without this await the new MOVE would be dispatched before the cancelled
             # task's STOP, and the STOP would immediately halt the new movement (no-op tilt).
             await self._cancel_tilt_task()
-            self._tilt_task = self.hass.async_create_task(self._async_run_tilt(address, command, sleeptime))
+            # R3-18: tag this tilt with a movement generation; the post-sleep STOP only fires
+            # if no newer tilt/movement superseded it in the meantime (see _async_run_tilt).
+            self._move_generation += 1
+            generation = self._move_generation
+            self._tilt_task = self.hass.async_create_task(self._async_run_tilt(address, command, sleeptime, generation))
 
         if self.general_settings[CONF_FAST_STATUS_CHANGE]:
             if direction == "up":
@@ -396,11 +404,17 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
                 self._attr_is_opening = False
             self.schedule_update_ha_state()
 
-    async def _async_run_tilt(self, address, command, sleeptime) -> None:
+    async def _async_run_tilt(self, address, command, sleeptime, generation=None) -> None:
         """Send the tilt-start telegram, wait, then send the stop telegram. Cancellable. (H5)"""
         try:
             self.send_message(H5_3F_7F(0, command, 1).encode_message(address))
             await asyncio.sleep(sleeptime)
+            # R3-18: re-validate before the post-sleep STOP. If a newer tilt/movement superseded
+            # this one during the sleep (without the cancel reaching us in time), our stale STOP
+            # would halt the NEW movement. Only stop if we are still the current generation.
+            if generation is not None and (self._move_generation != generation or self._tilt_task is not asyncio.current_task()):
+                LOGGER.debug("[%s %s] Tilt superseded during move - skipping stale STOP telegram.", Platform.COVER, str(self.dev_id))
+                return
             self.send_message(H5_3F_7F(0, 0x00, 1).encode_message(address))
         except asyncio.CancelledError:
             # ensure the cover does not keep moving when cancelled (new command / entity removed).
@@ -422,6 +436,9 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
         by open/close/set_position afterwards. The task is marked so its
         cancel-handler does NOT emit a stop telegram (the new command takes over).
         """
+        # R3-18: a new movement supersedes any in-flight tilt generation, so even a tilt task
+        # that races past its cancellation will skip its stale post-sleep STOP.
+        self._move_generation += 1
         task = self._tilt_task
         self._tilt_task = None
         if task is not None and not task.done():

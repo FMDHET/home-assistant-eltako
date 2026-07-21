@@ -1,6 +1,7 @@
 """Constants for the Eltako integration."""
-from enum import Enum
-from strenum import StrEnum
+# R3-26: use the stdlib StrEnum (Python >= 3.11; HA requires >= 3.12) instead of the
+# third-party `strenum` package - removes an unnecessary supply-chain/maintenance dependency.
+from enum import Enum, StrEnum
 import logging
 
 from typing import Final

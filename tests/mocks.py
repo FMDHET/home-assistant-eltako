@@ -127,7 +127,10 @@ class EventMock():
         self.data = data
 class GatewayMock(EnOceanGateway):
 
-    def __init__(self, general_settings:dict=DEFAULT_GENERAL_SETTINGS, dev_id: int=123, base_id:AddressExpression=AddressExpression.parse('FF-AA-80-00')):
+    def __init__(self, general_settings:dict=None, dev_id: int=123, base_id:AddressExpression=AddressExpression.parse('FF-AA-80-00')):
+        # R3-25: no mutable default arg; always take an OWN copy so a mutation can never leak
+        # into the shared DEFAULT_GENERAL_SETTINGS or another mock instance.
+        general_settings = dict(DEFAULT_GENERAL_SETTINGS if general_settings is None else general_settings)
         hass = HassMock()
         gw_type = GatewayDeviceType.GatewayEltakoFAM14
 

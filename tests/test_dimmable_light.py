@@ -20,7 +20,9 @@ class TestDimmableLight(unittest.TestCase):
         self.last_sent_command = msg
 
     def create_switchable_light(self) -> EltakoDimmableLight:
-        settings = DEFAULT_GENERAL_SETTINGS
+        # R3-25: copy - never mutate the shared module-level DEFAULT_GENERAL_SETTINGS in place
+        # (leaked fast_status_change=True into every later GatewayMock -> order-dependent tests).
+        settings = dict(DEFAULT_GENERAL_SETTINGS)
         settings[CONF_FAST_STATUS_CHANGE] = True
         gateway = GatewayMock(settings)
         dev_id = AddressExpression.parse('00-00-00-01')
@@ -104,13 +106,15 @@ class TestDimmableLight(unittest.TestCase):
     def test_switchable_light_trun_on(self):
         light = self.create_switchable_light()
         light.send_message = self.mock_send_message
-        
-        # test if command is sent to eltako bus
+
+        # R3-14: turn_on() WITHOUT brightness now sends a plain switching-ON (cmd 0x01) so the
+        # actuator restores its OWN last dim level, instead of forcing a dimming-to-100%
+        # telegram. The brightness is no longer faked - it arrives via the status telegram.
         light.turn_on()
-        self.assertEqual(light.brightness, 255)
-        self.assertEqual(
-            self.last_sent_command.body,
-            b'k\x07\x02d\x00\t\x00\x00\xb0\x01\x00')
+        decoded = A5_38_08.decode_message(self.last_sent_command)
+        self.assertEqual(decoded.command, 0x01)
+        self.assertEqual(decoded.switching.switching_command, 1)   # ON
+        self.assertIsNone(light.brightness)   # not assumed optimistically anymore
         
     def test_switchable_light_trun_off(self):
         light = self.create_switchable_light()
