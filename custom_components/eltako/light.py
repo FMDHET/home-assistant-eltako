@@ -45,10 +45,12 @@ async def async_setup_entry(
                 _area_start = len(entities)
                 sender_config = config_helpers.get_device_conf(entity_config, CONF_SENDER)
 
+                fast_status_change = dev_conf.get(CONF_FAST_STATUS_CHANGE)   # per-device override (None = inherit global)
+
                 if dev_conf.eep in [A5_38_08]:
-                    entities.append(EltakoDimmableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep))
+                    entities.append(EltakoDimmableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep, fast_status_change))
                 elif dev_conf.eep in [M5_38_08]:
-                    entities.append(EltakoSwitchableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep))
+                    entities.append(EltakoSwitchableLight(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep, fast_status_change))
 
                 apply_area_to_entities(entities, _area_start, dev_conf)   # F1
 
@@ -63,6 +65,16 @@ async def async_setup_entry(
 
 
 class AbstractLightEntity(EltakoEntity, LightEntity, RestoreEntity):
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # Guarantee a single toggle instead of on/off buttons: when this device is
+        # optimistic (fast_status_change) but no definite on/off state could be restored
+        # (fresh install, or a previously `unknown` state), default to off. Runs AFTER the
+        # base restore in super(), so a genuinely restored on/off is never overwritten.
+        if self.fast_status_change and self._attr_is_on is None:
+            self._attr_is_on = False
+            self.schedule_update_ha_state()
 
     def load_value_initially(self, latest_state:State):
         # LOGGER.debug(f"[{self._attr_ha_platform} {self.dev_id}] latest state - state: {latest_state.state}")
@@ -93,11 +105,12 @@ class EltakoDimmableLight(AbstractLightEntity):
     _attr_color_mode = ColorMode.BRIGHTNESS
     _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
 
-    def __init__(self, platform:str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP):
+    def __init__(self, platform:str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP, fast_status_change: bool | None = None):
         """Initialize the Eltako light source."""
         super().__init__(platform, gateway, dev_id, dev_name, dev_eep)
         self._sender_id = sender_id
         self._sender_eep = sender_eep
+        self._fast_status_change = fast_status_change   # per-device override (None = inherit global)
         self._f6_brightness_warned = False   # R3-19: warn only once per entity
 
 
@@ -151,7 +164,7 @@ class EltakoDimmableLight(AbstractLightEntity):
             LOGGER.warning("[%s %s] Sender EEP %s not supported.", Platform.LIGHT, str(self.dev_id), self._sender_eep.eep_string)
             return
 
-        if self.general_settings[CONF_FAST_STATUS_CHANGE]:
+        if self.fast_status_change:
             # R3-14/R3-19: only assume a brightness optimistically when one was actually
             # requested via an A5-38-08 dimmer command; a plain ON or an F6 rocker leaves the
             # brightness to the actuator's status telegram.
@@ -190,7 +203,7 @@ class EltakoDimmableLight(AbstractLightEntity):
             LOGGER.warning("[%s %s] Sender EEP %s not supported.", Platform.LIGHT, str(self.dev_id), self._sender_eep.eep_string)
             return
             
-        if self.general_settings[CONF_FAST_STATUS_CHANGE]:
+        if self.fast_status_change:
             self._attr_brightness = 0
             self._attr_is_on = False
             self.schedule_update_ha_state()
@@ -250,17 +263,18 @@ class EltakoSwitchableLight(AbstractLightEntity):
     _attr_color_mode = ColorMode.ONOFF
     _attr_supported_color_modes = {ColorMode.ONOFF}
 
-    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP):
+    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP, fast_status_change: bool | None = None):
         """Initialize the Eltako light source."""
         super().__init__(platform, gateway, dev_id, dev_name, dev_eep)
         self._sender_id = sender_id
         self._sender_eep = sender_eep
+        self._fast_status_change = fast_status_change   # per-device override (None = inherit global)
 
 
     def turn_on(self, **kwargs: Any) -> None:
         """Turn the light source on or sets a specific dimmer value."""
         address, _ = self._sender_id
-        
+
         if self._sender_eep == A5_38_08:
             switching = CentralCommandSwitching(0, 1, 0, 0, 1)
             msg = A5_38_08(command=0x01, switching=switching).encode_message(address)
@@ -286,7 +300,7 @@ class EltakoSwitchableLight(AbstractLightEntity):
             LOGGER.warning("[%s %s] Sender EEP %s not supported.", Platform.LIGHT, str(self.dev_id), self._sender_eep.eep_string)
             return
 
-        if self.general_settings[CONF_FAST_STATUS_CHANGE]:
+        if self.fast_status_change:
             self._attr_is_on = True
             self.schedule_update_ha_state()
         
@@ -320,7 +334,7 @@ class EltakoSwitchableLight(AbstractLightEntity):
             LOGGER.warning("[%s %s] Sender EEP %s not supported.", Platform.LIGHT, str(self.dev_id), self._sender_eep.eep_string)
             return
         
-        if self.general_settings[CONF_FAST_STATUS_CHANGE]:
+        if self.fast_status_change:
             self._attr_is_on = False
             self.schedule_update_ha_state()
 
