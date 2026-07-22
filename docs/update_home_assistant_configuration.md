@@ -127,7 +127,10 @@ Another example file can be found [here](../ha.yaml).
 ~~~~~~~~
 eltako:
   general_settings:
-    fast_status_change: False   # True: Changes status in HA immediately without waiting for actuator response. Default: False
+    fast_status_change: False   # True: Changes status in HA immediately without waiting for actuator response. Default: False.
+                                # Can be overridden PER light/switch device (see FSR14_4x - 1 below). Useful for a
+                                # fire-and-forget F6 rocker sender that gives no status feedback: with it True the
+                                # entity keeps a definite on/off state (single HA toggle) instead of staying "unknown".
   gateway:
     - id: 1
       device_type: fgw14usb       # Supported gateways: gam14, fgw14usb
@@ -156,6 +159,7 @@ eltako:
         - id: 00-00-00-01
           eep: M5-38-08
           name: FSR14_4x - 1
+          fast_status_change: True   # optional per-device override of the global setting above
           sender:
             id: 00-00-B0-01
             eep: A5-38-08

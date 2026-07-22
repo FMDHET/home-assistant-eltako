@@ -39,7 +39,9 @@ async def async_setup_entry(
                 _area_start = len(entities)
                 sender_config = config_helpers.get_device_conf(entity_config, CONF_SENDER)
 
-                entities.append(EltakoSwitch(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep))
+                fast_status_change = dev_conf.get(CONF_FAST_STATUS_CHANGE)   # per-device override (None = inherit global)
+
+                entities.append(EltakoSwitch(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, sender_config.id, sender_config.eep, fast_status_change))
                 apply_area_to_entities(entities, _area_start, dev_conf)   # F1
 
             except Exception as e:
@@ -55,12 +57,23 @@ async def async_setup_entry(
 class EltakoSwitch(EltakoEntity, SwitchEntity, RestoreEntity):
     """Representation of an Eltako switch device."""
 
-    def __init__(self, platform:str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP):
+    def __init__(self, platform:str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP, sender_id: AddressExpression, sender_eep: EEP, fast_status_change: bool | None = None):
         """Initialize the Eltako switch device."""
         super().__init__(platform, gateway, dev_id, dev_name, dev_eep)
         self._sender_id = sender_id
         self._sender_eep = sender_eep
-        
+        self._fast_status_change = fast_status_change   # per-device override (None = inherit global)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # Guarantee a single toggle instead of on/off buttons: when this device is
+        # optimistic (fast_status_change) but no definite on/off state could be restored
+        # (fresh install, or a previously `unknown` state), default to off. Runs AFTER the
+        # base restore in super(), so a genuinely restored on/off is never overwritten.
+        if self.fast_status_change and self._attr_is_on is None:
+            self._attr_is_on = False
+            self.schedule_update_ha_state()
+
     def load_value_initially(self, latest_state:State):
         try:
             if 'unknown' == latest_state.state:
@@ -109,7 +122,7 @@ class EltakoSwitch(EltakoEntity, SwitchEntity, RestoreEntity):
             LOGGER.warning("[%s %s] Sender EEP %s not supported.", Platform.SWITCH, str(self.dev_id), self._sender_eep.eep_string)
             return
         
-        if self.general_settings[CONF_FAST_STATUS_CHANGE]:
+        if self.fast_status_change:
             self._attr_is_on = True
             self.schedule_update_ha_state()
 
@@ -142,7 +155,7 @@ class EltakoSwitch(EltakoEntity, SwitchEntity, RestoreEntity):
             LOGGER.warning("[%s %s] Sender EEP %s not supported.", Platform.SWITCH, str(self.dev_id), self._sender_eep.eep_string)
             return
 
-        if self.general_settings[CONF_FAST_STATUS_CHANGE]:
+        if self.fast_status_change:
             self._attr_is_on = False
             self.schedule_update_ha_state()
 

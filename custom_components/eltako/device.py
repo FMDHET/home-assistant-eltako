@@ -33,6 +33,11 @@ class EltakoEntity(Entity):
     # cached connection state; seeded in async_added_to_hass, updated by the handler.
     _gateway_connected: bool = True
 
+    # Per-device override for the global `fast_status_change` general setting.
+    # None = inherit the global value; True/False = force it for this device only.
+    # Set by the light/switch platform setup from the YAML `fast_status_change:` key.
+    _fast_status_change: bool | None = None
+
 
     def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str="Device", dev_eep: EEP=None, description_key:str=None):
         """Initialize the device."""
@@ -215,6 +220,23 @@ class EltakoEntity(Entity):
     def unique_id(self) -> str:
         """Return the unique id of device"""
         return self._attr_unique_id
+
+    @property
+    def fast_status_change(self) -> bool:
+        """Return the effective fast-status-change flag for this entity.
+
+        A per-device value (light/switch YAML `fast_status_change:`) overrides the
+        global `general_settings` value; None (key absent) inherits the global one.
+        When True, turn_on/turn_off set the state optimistically so the entity always
+        reports a definite on/off - Home Assistant then renders a single toggle instead
+        of the separate on/off buttons it shows for an `unknown` state (which is what a
+        fire-and-forget F6 rocker sender otherwise leaves the entity in, as it gets no
+        status feedback)."""
+        if self._fast_status_change is not None:
+            return self._fast_status_change
+        # .get() default: DEFAULT_GENERAL_SETTINGS always carries the key, but stay
+        # defensive so a hand-built general_settings dict cannot KeyError here.
+        return self.general_settings.get(CONF_FAST_STATUS_CHANGE, False)
 
     @property
     def available(self) -> bool:

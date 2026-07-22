@@ -139,6 +139,11 @@ class LightSchema(EltakoPlatformSchema):
                 vol.Required(CONF_SENDER): _get_sender_schema(CONF_SENDER_EEP_SUPPORTED),
                 vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
                 vol.Optional(CONF_AREA): cv.string,     # F1: assign HA area from YAML
+                # Per-device override of the global fast_status_change setting. NO default:
+                # an absent key stays None so the entity inherits general_settings. True makes
+                # the light optimistic (single toggle instead of on/off buttons for a
+                # feedback-less F6 rocker sender).
+                vol.Optional(CONF_FAST_STATUS_CHANGE): cv.boolean,
             }
         ),
     )
@@ -160,6 +165,8 @@ class SwitchSchema(EltakoPlatformSchema):
                 vol.Required(CONF_SENDER): _get_sender_schema(CONF_SENDER_EEP_SUPPORTED),
                 vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
                 vol.Optional(CONF_AREA): cv.string,     # F1: assign HA area from YAML
+                # Per-device override of the global fast_status_change setting (see LightSchema).
+                vol.Optional(CONF_FAST_STATUS_CHANGE): cv.boolean,
             }
         ),
     )
