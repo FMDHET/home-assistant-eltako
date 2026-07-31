@@ -72,7 +72,11 @@ SENSOR_TYPE_WEATHER_STATION_TEMPERATURE = "weather_station_temperature"
 SENSOR_TYPE_WEATHER_STATION_WIND_SPEED = "weather_station_wind_speed"
 SENSOR_TYPE_WEATHER_STATION_RAIN = "weather_station_rain"
 SENSOR_TYPE_WEATHER_STATION_ILLUMINANCE_WEST = "weather_station_illuminance_west"
-SENSOR_TYPE_WEATHER_STATION_ILLUMINANCE_CENTRAL = "weather_station_illuminance_central"
+# The EEP field is sun_south, so the sensor is named "Illuminance (south)". The key
+# string keeps the historic "central" wording on purpose: it feeds unique_id/entity_id
+# (device.py), and renaming it would break the entity_id and history of existing
+# installations.
+SENSOR_TYPE_WEATHER_STATION_ILLUMINANCE_SOUTH = "weather_station_illuminance_central"
 SENSOR_TYPE_WEATHER_STATION_ILLUMINANCE_EAST = "weather_station_illuminance_east"
 SENSOR_TYPE_ILLUMINANCE = "illuminance"
 
@@ -194,6 +198,13 @@ SENSOR_DESC_WEATHER_STATION_WIND_SPEED = EltakoSensorEntityDescription(
     key=SENSOR_TYPE_WEATHER_STATION_WIND_SPEED,
     name="Wind speed",
     native_unit_of_measurement=UnitOfSpeed.METERS_PER_SECOND,
+    # HAs metric unit system force-converts every WIND_SPEED device class away from
+    # m/s to km/h. The EEP (A5-13-01) and the Eltako weather station both work in
+    # m/s, so suggest m/s explicitly - an integration-provided suggestion takes
+    # precedence over that rule (SensorEntity._get_initial_suggested_unit).
+    # Only applies when an entity is first registered; existing entities keep the
+    # unit stored in the entity registry and can be switched in the entity settings.
+    suggested_unit_of_measurement=UnitOfSpeed.METERS_PER_SECOND,
     icon="mdi:windsock",
     device_class=SensorDeviceClass.WIND_SPEED,
     state_class=SensorStateClass.MEASUREMENT,
@@ -220,9 +231,9 @@ SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_WEST = EltakoSensorEntityDescription(
     suggested_display_precision=0,
 )
 
-SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_CENTRAL = EltakoSensorEntityDescription(
-    key=SENSOR_TYPE_WEATHER_STATION_ILLUMINANCE_CENTRAL,
-    name="Illuminance (central)",
+SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_SOUTH = EltakoSensorEntityDescription(
+    key=SENSOR_TYPE_WEATHER_STATION_ILLUMINANCE_SOUTH,
+    name="Illuminance (south)",
     native_unit_of_measurement=LIGHT_LUX,
     icon="mdi:weather-sunny",
     device_class=SensorDeviceClass.ILLUMINANCE,
@@ -353,7 +364,7 @@ async def async_setup_entry(
                     entities.append(EltakoWeatherStation(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_WEATHER_STATION_WIND_SPEED))
                     entities.append(EltakoWeatherStation(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_WEATHER_STATION_RAIN))
                     entities.append(EltakoWeatherStation(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_WEST))
-                    entities.append(EltakoWeatherStation(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_CENTRAL))
+                    entities.append(EltakoWeatherStation(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_SOUTH))
                     entities.append(EltakoWeatherStation(platform, gateway, dev_conf.id, dev_name, dev_conf.eep, SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_EAST))
                     
                 elif dev_conf.eep in [F6_10_00]:
@@ -785,7 +796,7 @@ class EltakoWeatherStation(EltakoSensor):
                 return
             
             self._attr_native_value = decoded.sun_west * 1000.0
-        elif self.entity_description.key == SENSOR_TYPE_WEATHER_STATION_ILLUMINANCE_CENTRAL:
+        elif self.entity_description.key == SENSOR_TYPE_WEATHER_STATION_ILLUMINANCE_SOUTH:
             if decoded.identifier != 0x02:
                 return
             

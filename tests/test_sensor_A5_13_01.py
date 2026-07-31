@@ -56,7 +56,7 @@ class TestSensor(unittest.TestCase):
         ews.value_changed(msg)
         self.assertEqual(ews.native_value, 4705.882352941177)
 
-        ews.entity_description = SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_CENTRAL
+        ews.entity_description = SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_SOUTH
         ews._attr_native_value = -1
         ews.value_changed(msg)
         self.assertEqual(ews.native_value, 5882.35294117647)
@@ -65,4 +65,27 @@ class TestSensor(unittest.TestCase):
         ews._attr_native_value = -1
         ews.value_changed(msg)
         self.assertEqual(ews.native_value, 588.2352941176471)
+
+
+    def test_wind_speed_is_suggested_in_meters_per_second(self):
+        """HAs metric unit system force-converts WIND_SPEED to km/h unless the
+        integration suggests a unit itself. The EEP works in m/s (0..70 m/s), so
+        m/s must be suggested explicitly."""
+        desc = SENSOR_DESC_WEATHER_STATION_WIND_SPEED
+        self.assertEqual(desc.native_unit_of_measurement, UnitOfSpeed.METERS_PER_SECOND)
+        self.assertEqual(desc.suggested_unit_of_measurement, UnitOfSpeed.METERS_PER_SECOND)
+        self.assertEqual(desc.device_class, SensorDeviceClass.WIND_SPEED)
+
+        # The suggestion must be convertible from the native unit, otherwise HA
+        # rejects it in SensorEntity._is_valid_suggested_unit.
+        ews = self.create_weatherstation_sensor(desc)
+        self.assertEqual(ews.unit_of_measurement, UnitOfSpeed.METERS_PER_SECOND)
+
+
+    def test_south_illuminance_is_named_south_with_stable_key(self):
+        """The EEP field is sun_south, so the display name says "south" - but the
+        key must keep its historic value because it feeds unique_id/entity_id."""
+        desc = SENSOR_DESC_WEATHER_STATION_ILLUMINANCE_SOUTH
+        self.assertEqual(desc.name, "Illuminance (south)")
+        self.assertEqual(desc.key, "weather_station_illuminance_central")
 
