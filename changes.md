@@ -1,5 +1,11 @@
 # Changes and Feature List
 
+## Version 2.16.0 — Wetterstation: Wind in m/s, „Illuminance (central)" → „Illuminance (south)"
+Zwei Anzeige-Korrekturen an der Wetterstation (EEP A5-13-01, z. B. FWS61 über FWG14MS). Beide sind rein kosmetisch/anzeigeseitig — an der Dekodierung der Telegramme ändert sich nichts.
+* **Windgeschwindigkeit wird in m/s vorgeschlagen (bisher km/h):** Der Messwert war immer schon korrekt in m/s (EEP A5-13-01 skaliert das Rohbyte auf 0…70 m/s), aber Home Assistants metrisches Einheitensystem rechnet **jeden** Sensor mit `device_class: wind_speed` zwangsweise auf km/h um (alles außer km/h und Knoten). Die Integration schlägt jetzt explizit m/s vor — eine Vorgabe der Integration hat Vorrang vor dieser Regel (`SensorEntity._get_initial_suggested_unit`). *Wichtig für Bestandsinstallationen:* Der Vorschlag greift nur beim **erstmaligen** Anlegen einer Entität. Ein bereits existierender Wind-Sensor behält die in der Entity-Registry gespeicherte Einheit (km/h) — dort umstellen über Einstellungen → Geräte & Dienste → Entitäten → Wind-Sensor → Zahnrad → *Maßeinheit* → `m/s`. Der Zahlenwert war in beiden Fällen richtig (km/h = m/s × 3,6), nur die Einheit war nicht die des Geräts.
+* **Sensor „Illuminance (central)" heißt jetzt „Illuminance (south)":** Der Sensor liest das EEP-Feld `sun_south` (Süd-Sonnensensor der Wetterstation) — „central" war irreführend. Der interne Schlüssel bleibt bewusst unverändert (`weather_station_illuminance_central`), weil er in `unique_id`/`entity_id` einfließt: bestehende `entity_id`s, Historie und Automationen bleiben damit unangetastet, es ändert sich nur der angezeigte Name.
+* Tests: 2 neue Tests (`test_sensor_A5_13_01.py`); Suite **324 grün**.
+
 ## Version 2.15.0 — `fast_status_change` pro Gerät konfigurierbar
 Bisher ließ sich `fast_status_change` (optimistische Statusübernahme direkt beim Schalten, ohne auf die Aktor-Rückmeldung zu warten) nur **global** in `general_settings` setzen. Neu kann es **pro Licht- und Schalter-Gerät** überschrieben werden.
 * **Neuer optionaler Schlüssel `fast_status_change:` bei `light:` und `switch:`** — überschreibt die globale Einstellung nur für dieses Gerät (`True`/`False`). Fehlt der Schlüssel, gilt weiter der globale Wert → **vollständig rückwärtskompatibel**, bestehende Konfigurationen ändern sich nicht.
