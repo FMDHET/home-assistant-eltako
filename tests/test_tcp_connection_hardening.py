@@ -5,10 +5,15 @@ remote end closes the TCP connection gracefully (FIN), recv() returns b''
 which the library treats as a message instead of a disconnect. The hardened
 subclass must detect the EOF and reconnect.
 """
+import asyncio
+import logging
 import socket
 import threading
 import time
 import unittest
+
+from enocean.protocol.constants import PACKET
+from enocean.protocol.packet import Packet
 
 from custom_components.eltako.tcp2serial_hardened import HardenedTCP2SerialCommunicator
 
@@ -284,6 +289,106 @@ class TestTcpConnectionHardening(unittest.TestCase):
             com.join(5)
             server.stop()
             server.join(2)
+
+
+class TestKeepAliveLogNoise(unittest.TestCase):
+    """K9: outgoing COMMON_COMMAND packets must not trigger enocean's
+    "Replacing Packet.optional with default value." WARNING.
+
+    enocean's Packet.__init__ logs that whenever `optional` is not a list - and
+    its own default is None, so every upstream call site that omits the argument
+    warns. The app-level keep-alive builds one such packet per probe (every
+    tcp_keep_alive_timeout seconds of bus silence), flooding the HA log.
+    """
+
+    ENOCEAN_LOGGER = "enocean.protocol.packet"
+
+    def _make_com(self, keep_alive_timeout=30):
+        # Not started: run() never executes, so no socket is opened. Only the
+        # attributes _check_timeout_on_application_level() touches are needed;
+        # last_message_received is normally initialized in run().
+        com = HardenedTCP2SerialCommunicator(
+            host="127.0.0.1",
+            port=1,
+            auto_reconnect=True,
+            reconnection_timeout=0.1,
+            tcp_keep_alive_timeout=keep_alive_timeout,
+        )
+        com.last_message_received = time.time()
+        return com
+
+    def _drain(self, com):
+        packets = []
+        while not com.transmit.empty():
+            packets.append(com.transmit.get_nowait())
+        return packets
+
+    def test_upstream_call_style_really_warns(self):
+        """Guard for the two tests below: prove the WARNING exists at all, so a
+        passing assertNoLogs cannot be a false negative from a wrong logger name."""
+        with self.assertLogs(self.ENOCEAN_LOGGER, level=logging.WARNING) as ctx:
+            Packet(PACKET.COMMON_COMMAND, data=[0x08])   # upstream: no optional=
+        self.assertTrue(
+            any("Replacing Packet.optional" in m for m in ctx.output),
+            f"expected the enocean optional-fallback warning, got {ctx.output}",
+        )
+
+    def test_keepalive_probe_emits_no_warning(self):
+        com = self._make_com(keep_alive_timeout=30)
+        # Silence inside (timeout-1, timeout] -> the probe branch, not the close branch.
+        com.last_message_received = time.time() - 29.5
+
+        with self.assertNoLogs(self.ENOCEAN_LOGGER, level=logging.WARNING):
+            com._check_timeout_on_application_level()
+
+        packets = self._drain(com)
+        self.assertEqual(len(packets), 1, "keep-alive probe was not enqueued")
+        self.assertEqual(packets[0].data, [0x08], "probe is not CO_RD_IDBASE")
+        self.assertEqual(packets[0].optional, [])
+
+    def test_keepalive_probe_frame_is_unchanged(self):
+        """The fix must be log-noise-only: the bytes on the wire stay identical
+        to what the upstream (warning-emitting) call produces."""
+        com = self._make_com(keep_alive_timeout=30)
+        com.last_message_received = time.time() - 29.5
+        com._check_timeout_on_application_level()
+
+        fixed = self._drain(com)[0].build()
+        upstream = Packet(PACKET.COMMON_COMMAND, data=[0x08]).build()
+        self.assertEqual(fixed, upstream, "K9 changed the frame - it must not")
+
+    def test_stale_connection_still_closes(self):
+        """The copied method must keep the other branch intact: past the full
+        timeout the socket is closed and the timestamp zeroed (-> reconnect)."""
+        com = self._make_com(keep_alive_timeout=30)
+        com.last_message_received = time.time() - 31
+
+        closed = []
+        com._ser = type("_FakeSock", (), {"close": lambda self: closed.append(True)})()
+        com._check_timeout_on_application_level()
+
+        self.assertEqual(closed, [True], "stale connection was not closed")
+        self.assertEqual(com.last_message_received, 0)
+        self.assertTrue(com.transmit.empty(), "no probe may be sent on the close path")
+
+    def test_base_id_and_version_requests_emit_no_warning(self):
+        """The two requests fired per (re)connect from
+        EltakoGateway.query_for_base_id_and_version(). Also a regression guard
+        for the super().send() trap: these must actually enqueue a Packet, not
+        leave an un-awaited coroutine behind."""
+        com = self._make_com()
+
+        with self.assertNoLogs(self.ENOCEAN_LOGGER, level=logging.WARNING):
+            asyncio.run(com.send_base_id_request())
+            asyncio.run(com.send_version_request())
+
+        packets = self._drain(com)
+        self.assertEqual(len(packets), 2, "requests were not enqueued")
+        for p in packets:
+            self.assertIsInstance(p, Packet)
+            self.assertEqual(p.packet_type, PACKET.COMMON_COMMAND)
+            self.assertEqual(p.optional, [])
+        self.assertEqual([p.data for p in packets], [[0x08], [0x03]])
 
 
 if __name__ == "__main__":

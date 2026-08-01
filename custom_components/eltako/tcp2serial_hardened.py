@@ -31,6 +31,16 @@ implementation) with these fixes (all marked ``# HARDENED``):
   back into ``self._buffer``; upstream then *replaces* the buffer on the next
   ``recv`` instead of appending, discarding the remainder (the serial variant
   gets this right with ``extend``). The hardened copy appends.
+* K9: the outgoing ESP3 command packets pass ``optional=[]`` explicitly.
+  ``enocean.protocol.packet.Packet.__init__`` logs
+  ``"Replacing Packet.optional with default value."`` at WARNING whenever the
+  argument is not a ``list`` - and its own default is ``None``, so *every*
+  upstream call that omits it warns. The application-level keep-alive builds
+  one such packet per probe (every ``tcp_keep_alive_timeout`` seconds of bus
+  silence, 30 s by default), which floods the HA log with ~2900 WARNING lines
+  per day. The built frame is byte-identical with and without the argument -
+  for a COMMON_COMMAND an empty optional field is the correct value, so this
+  removes log noise only and changes nothing on the wire.
 
 The library is pinned (``==0.2.21``) in manifest.json, so the copied ``run()``
 cannot drift from the actual implementation unnoticed. Re-verify this module
@@ -40,6 +50,8 @@ import socket
 import select
 import time
 
+from enocean.protocol.constants import PACKET
+from enocean.protocol.packet import Packet
 from esp2_gateway_adapter.esp3_tcp_com import TCP2SerialCommunicator
 
 
@@ -156,3 +168,42 @@ class HardenedTCP2SerialCommunicator(TCP2SerialCommunicator):
         self.is_serial_connected.clear()
         self._fire_status_change_handler(connected=False)
         self.logger.info('TCP2SerialCommunicator stopped')
+
+    def _check_timeout_on_application_level(self):
+        # Copy of TCP2SerialCommunicator._check_timeout_on_application_level()
+        # from esp2_gateway_adapter 0.2.21 with the K9 fix (marked "# HARDENED").
+        # Note: self._ser is the proxy for the parent's name-mangled __ser - a
+        # verbatim "self.__ser" would mangle to this subclass and miss the socket.
+        if self._auto_reconnect:
+            if time.time() - self.last_message_received > self._tcp_keep_alive_timeout:
+                self.last_message_received = 0
+                self._ser.close()
+            elif self.transmit.empty() and time.time() - self.last_message_received > self._tcp_keep_alive_timeout - 1:
+                self.log.debug("Request base id to check if connection is still alive.")
+                # HARDENED (K9): optional=[] - see module docstring. Without it every
+                # keep-alive probe emits an enocean WARNING; the frame is unchanged.
+                self.transmit.put(self._common_command(0x08))
+
+    @staticmethod
+    def _common_command(*data) -> Packet:
+        """Build an ESP3 COMMON_COMMAND packet without the K9 log noise.
+
+        ``optional=[]`` is what enocean falls back to anyway - a common command
+        carries no optional data - it just has to be passed explicitly.
+        """
+        return Packet(PACKET.COMMON_COMMAND, data=list(data), optional=[])
+
+    # K9: same fix for the two requests fired once per (re)connect from
+    # EltakoGateway.query_for_base_id_and_version().
+    #
+    # These deliberately do NOT call super().send(): upstream's implementations
+    # in ESP3SerialCommunicator use super().send() to reach the *synchronous*
+    # Communicator.send, but from this subclass super() resolves to the *async*
+    # ESP3SerialCommunicator.send - the coroutine would never be awaited and the
+    # packet never sent. transmit.put() is exactly what Communicator.send does
+    # after its isinstance check.
+    async def send_base_id_request(self):
+        self.transmit.put(self._common_command(0x08))
+
+    async def send_version_request(self):
+        self.transmit.put(self._common_command(0x03))
