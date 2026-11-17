@@ -291,6 +291,192 @@ class TestTcpConnectionHardening(unittest.TestCase):
             server.join(2)
 
 
+class _ScriptedServer(threading.Thread):
+    """Serves one scripted list of byte chunks per accepted connection.
+
+    ``scripts[i]`` is sent on the i-th connection (chunk by chunk, with a short
+    gap so every chunk arrives as its own recv()); afterwards the connection is
+    held open for ``hold`` seconds and then closed (FIN). Connections beyond the
+    scripts get nothing and are held open."""
+
+    def __init__(self, scripts, hold: float = 3.0, gap: float = 0.2):
+        super().__init__(daemon=True)
+        self.scripts = scripts
+        self.hold = hold
+        self.gap = gap
+        self.connection_count = 0
+        self._stop = threading.Event()
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("127.0.0.1", 0))
+        self._sock.listen(4)
+        self._sock.settimeout(0.2)
+        self.port = self._sock.getsockname()[1]
+
+    def run(self):
+        while not self._stop.is_set():
+            try:
+                conn, _ = self._sock.accept()
+            except socket.timeout:
+                continue
+            idx = self.connection_count
+            self.connection_count += 1
+            chunks = self.scripts[idx] if idx < len(self.scripts) else []
+            threading.Thread(target=self._serve, args=(conn, chunks), daemon=True).start()
+        self._sock.close()
+
+    def _serve(self, conn, chunks):
+        try:
+            for chunk in chunks:
+                conn.sendall(chunk)
+                time.sleep(self.gap)
+            end = time.time() + self.hold
+            while not self._stop.is_set() and time.time() < end:
+                time.sleep(0.05)
+        except OSError:
+            pass
+        finally:
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+    def stop(self):
+        self._stop.set()
+
+
+class TestMalformedFrame(unittest.TestCase):
+    """K10: a radio telegram with valid CRCs but a data part too short for its
+    RORG made enocean's RadioPacket.parse() raise inside Packet.parse_msg(),
+    before the buffer was reassigned. The broken frame stayed in the buffer, the
+    exception reached run() -> reconnect -> recv appends -> crash again: an
+    endless crash/reconnect loop (observed: ~every 15 s for 6+ hours, all sends
+    failing with "Serial port ... is not available")."""
+
+    # 4BS (RORG A5) telegram with ONE data byte instead of four, sender
+    # 05-1E-83-16. DB0=0x80 -> LRN bit 0 (teach-in) + "EEP included" bit set,
+    # so RadioPacket.parse() slices DB3 out of an 8-bit array -> '' ->
+    # "ValueError: invalid literal for int() with base 2: ''" (the exact error
+    # from the field log). Header and data CRC are valid.
+    BAD = bytes.fromhex("55000707017aa580051e83160001ffffffff2d0093")
+    GOOD = _SplitFrameServer.FRAME
+
+    def _make_com(self, received, logger=None, **kwargs):
+        kw = dict(host="127.0.0.1", port=1, callback=received.append,
+                  esp2_translation_enabled=True, auto_reconnect=True,
+                  reconnection_timeout=0.1, tcp_keep_alive_timeout=30)
+        if logger is not None:
+            kw["logger"] = logger
+        kw.update(kwargs)
+        return HardenedTCP2SerialCommunicator(**kw)
+
+    def test_bad_frame_really_crashes_upstream_parse_msg(self):
+        """Guard: the fixture reproduces the field error, so the tests below
+        cannot pass vacuously."""
+        with self.assertRaisesRegex(ValueError, "invalid literal for int"):
+            Packet.parse_msg(list(self.BAD))
+        status, rest, packet = Packet.parse_msg(list(self.GOOD))
+        self.assertIsNotNone(packet)
+        self.assertEqual(rest, [])
+
+    def test_parse_drops_bad_frame_and_keeps_the_following_one(self):
+        received = []
+        com = self._make_com(received)
+        com._buffer = list(self.GOOD + self.BAD + self.GOOD)
+
+        com.parse()   # must not raise
+
+        self.assertEqual(len(received), 2, "a valid frame next to the broken one was lost")
+        self.assertEqual(com._buffer, [], "broken frame was not removed from the buffer")
+        self.assertEqual(com._malformed_frames_dropped, 1)
+
+    def test_parse_keeps_incomplete_tail_after_bad_frame(self):
+        """Dropping must be exactly one frame: a partial frame behind it stays
+        for reassembly with the next recv (R3-02 still holds)."""
+        received = []
+        com = self._make_com(received)
+        com._buffer = list(self.BAD + self.GOOD[:9])
+        com.parse()
+        self.assertEqual(received, [])
+        com._buffer = list(com._buffer) + list(self.GOOD[9:])
+        com.parse()
+        self.assertEqual(len(received), 1)
+
+    def test_drop_warning_is_throttled(self):
+        logger = logging.getLogger("test.k10.throttle")
+        received = []
+        com = self._make_com(received, logger=logger)
+        with self.assertLogs(logger, level=logging.DEBUG) as ctx:
+            com._buffer = list(self.BAD + self.BAD)
+            com.parse()
+            com._buffer = list(self.BAD)
+            com.parse()
+        warnings = [r for r in ctx.records if r.levelno == logging.WARNING]
+        self.assertEqual(len(warnings), 1, f"expected one throttled WARNING, got {ctx.output}")
+        self.assertIn("05 1E 83 16", warnings[0].getMessage(), "frame (sender) not in warning")
+        self.assertEqual(com._malformed_frames_dropped, 3)
+
+    def test_callback_exception_does_not_escape_parse(self):
+        """An exception while dispatching an already-parsed packet must not
+        reach run() (it would force a pointless reconnect)."""
+        calls = []
+
+        def callback(msg):
+            calls.append(msg)
+            if len(calls) == 1:
+                raise RuntimeError("boom")
+
+        com = self._make_com([], callback=callback, logger=logging.getLogger("test.k10.cb"))
+        com._buffer = list(self.GOOD + self.GOOD)
+        with self.assertLogs("test.k10.cb", level=logging.ERROR):
+            com.parse()
+        self.assertEqual(len(calls), 2, "second packet was not delivered after a callback error")
+        self.assertEqual(com._buffer, [])
+
+    def _run_against(self, server, received, settle: float):
+        com = self._make_com(received, port=server.port)
+        states = []
+        com.set_status_changed_handler(states.append)
+        com.start()
+        try:
+            time.sleep(settle)
+            return list(states)   # snapshot before stop() appends its own False
+        finally:
+            com.stop()
+            com.join(5)
+            server.stop()
+            server.join(2)
+
+    def test_bad_frame_on_the_wire_keeps_connection_up(self):
+        """End-to-end: broken frame followed by a valid one on the same TCP
+        connection -> valid frame delivered, no reconnect. Without K10 the
+        valid frame is never delivered and the communicator reconnects every
+        reconnection_timeout."""
+        server = _ScriptedServer([[self.BAD, self.GOOD]], hold=3.0)
+        server.start()
+        received = []
+        states = self._run_against(server, received, settle=2.0)
+        self.assertEqual(len(received), 1, "valid frame after the broken one was not delivered")
+        self.assertEqual(server.connection_count, 1, "broken frame forced a reconnect")
+        # (startup may report False more than once; what matters is: connected
+        # once and never disconnected again)
+        self.assertIn(True, states, "never connected")
+        self.assertNotIn(False, states[states.index(True):], f"connection dropped: {states}")
+
+    def test_buffer_is_cleared_on_reconnect(self):
+        """A fragment left over from a dropped connection must not be glued to
+        the next connection's stream: it would corrupt (CRC error) and swallow
+        the first valid frame of the new connection."""
+        frag = _SplitFrameServer.FRAME[:9]
+        server = _ScriptedServer([[frag], [self.GOOD]], hold=0.3)
+        server.start()
+        received = []
+        self._run_against(server, received, settle=2.0)
+        self.assertGreaterEqual(server.connection_count, 2, "no reconnect happened")
+        self.assertEqual(len(received), 1,
+                         "first frame of the new connection was lost to a stale fragment")
+
+
 class TestKeepAliveLogNoise(unittest.TestCase):
     """K9: outgoing COMMON_COMMAND packets must not trigger enocean's
     "Replacing Packet.optional with default value." WARNING.
