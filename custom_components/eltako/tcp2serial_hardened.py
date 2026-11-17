@@ -41,22 +41,50 @@ implementation) with these fixes (all marked ``# HARDENED``):
   per day. The built frame is byte-identical with and without the argument -
   for a COMMON_COMMAND an empty optional field is the correct value, so this
   removes log noise only and changes nothing on the wire.
+* K10: a single malformed radio telegram no longer takes the gateway down.
+  ``Packet.parse_msg`` only reassigns the buffer once the packet object has
+  been constructed, but the constructor already runs ``RadioPacket.parse()``.
+  A frame with valid CRCs whose data part is too short for its RORG (e.g. a
+  4BS telegram with 1 instead of 4 data bytes and the "EEP included" bit set)
+  raises ``ValueError: invalid literal for int() with base 2: ''`` from there -
+  and the broken frame stays at the head of ``self._buffer``. The exception
+  propagated to ``run()``, which dropped the TCP connection and reconnected
+  after ``reconnection_timeout``; the next ``recv`` appended to the very same
+  buffer (R3-02) and the parse crashed again: an endless crash/reconnect loop
+  in which every send failed with "Serial port ... is not available" until the
+  integration was reloaded. The hardened ``parse()`` now drops exactly the
+  offending frame (its boundaries are trustworthy - both CRCs have passed at
+  that point) and carries on with the frames behind it; the connection stays
+  up. In addition the buffer is cleared on every (re)connect, so a fragment
+  from a previous connection can never be glued to the new byte stream.
+  Exceptions from dispatching an already-parsed packet are logged and
+  swallowed for the same reason (the buffer has advanced; a reconnect would
+  achieve nothing).
 
 The library is pinned (``==0.2.21``) in manifest.json, so the copied ``run()``
 cannot drift from the actual implementation unnoticed. Re-verify this module
 whenever the pin is bumped.
 """
+import datetime
 import socket
 import select
 import time
 
-from enocean.protocol.constants import PACKET
-from enocean.protocol.packet import Packet
+from enocean.protocol.constants import PACKET, PARSE_RESULT
+from enocean.protocol.packet import Packet, UTETeachInPacket
 from esp2_gateway_adapter.esp3_tcp_com import TCP2SerialCommunicator
+
+# K10: at most one WARNING per interval for dropped malformed frames - a device
+# that keeps sending broken telegrams must not flood the log (cf. K9).
+MALFORMED_FRAME_WARN_INTERVAL = 600  # seconds
 
 
 class HardenedTCP2SerialCommunicator(TCP2SerialCommunicator):
     """TCP2SerialCommunicator that detects a graceful remote close (EOF)."""
+
+    _malformed_frames_dropped = 0      # K10: total since start (diagnostics)
+    _malformed_frames_unreported = 0   # K10: dropped since the last WARNING
+    _malformed_frame_last_warning = 0.0
 
     # Proxies for the name-mangled private attributes of the parent class so
     # the copied run() below stays readable and keeps operating on the same
@@ -112,6 +140,9 @@ class HardenedTCP2SerialCommunicator(TCP2SerialCommunicator):
                     # message predates this connect by more than tcp_keep_alive_timeout -
                     # a permanent reconnect livelock after any outage > that timeout.
                     self.last_message_received = time.time()
+                    # HARDENED (K10): a new connection is a new byte stream - never glue a
+                    # fragment (or a broken frame) from the previous one in front of it.
+                    self._buffer = []
 
                     self.log.info(f"Established TCP connection to {self._host}:{self._port} (blocking: {not self._auto_reconnect}, tcp timeout: {self._tcp_connection_timeout} sec, serial timeout: {self._tcp_keep_alive_timeout} sec)")
 
@@ -168,6 +199,81 @@ class HardenedTCP2SerialCommunicator(TCP2SerialCommunicator):
         self.is_serial_connected.clear()
         self._fire_status_change_handler(connected=False)
         self.logger.info('TCP2SerialCommunicator stopped')
+
+    @property
+    def _callback_wrapper(self):
+        # Proxy for the name-mangled ESP3SerialCommunicator.__callback_wrapper.
+        return self._ESP3SerialCommunicator__callback_wrapper
+
+    def parse(self):
+        # Copy of ESP3SerialCommunicator.parse() from esp2_gateway_adapter 0.2.21
+        # with the K10 fix (marked "# HARDENED"). Never raises for bad input:
+        # an exception here would end up in run()'s reconnect path.
+        while True:
+            try:
+                status, self._buffer, packet = Packet.parse_msg(self._buffer)
+            except Exception as e:  # HARDENED (K10): frame passed CRC but is not parseable
+                self._drop_malformed_frame(e)
+                continue
+            # If message is incomplete -> break the loop
+            if status == PARSE_RESULT.INCOMPLETE:
+                return status
+
+            # If message is OK, add it to receive queue or send to the callback method
+            if status == PARSE_RESULT.OK and packet:
+                try:  # HARDENED (K10): buffer already advanced - log, don't reconnect
+                    packet.received = datetime.datetime.now()
+
+                    if isinstance(packet, UTETeachInPacket) and self.teach_in:
+                        response_packet = packet.create_response_packet(self.base_id)
+                        self.logger.info('Sending response to UTE teach-in.')
+                        self.send(response_packet)
+
+                    if self._outside_callback is None:
+                        self.receive.put(packet)
+                    else:
+                        self._callback_wrapper(packet)
+                    self.logger.debug(packet)
+                except Exception:
+                    self.log.exception("Failed to process received ESP3 packet %s", packet)
+
+    def _drop_malformed_frame(self, error: Exception) -> None:
+        """K10: remove the frame at the head of the buffer that parse_msg choked on.
+
+        parse_msg() only raises after the header/data length check and both CRC
+        checks have passed, so the frame boundaries computed from the header are
+        reliable: dropping exactly that frame keeps every frame behind it.
+        """
+        buf = list(self._buffer)
+        try:
+            start = buf.index(0x55)
+        except ValueError:  # cannot happen after a raise from parse_msg - be safe
+            self._buffer = []
+            return
+        try:
+            frame_len = 6 + ((buf[start + 1] << 8) | buf[start + 2]) + buf[start + 3] + 1
+        except (IndexError, TypeError):
+            frame_len = 1  # at least skip this sync byte so the loop makes progress
+        frame = buf[start:start + frame_len]
+        self._buffer = buf[start + frame_len:]
+
+        self._malformed_frames_dropped += 1
+        self._malformed_frames_unreported += 1
+        frame_hex = bytes(frame).hex(' ').upper()
+        now = time.monotonic()
+        if (self._malformed_frame_last_warning == 0.0
+                or now - self._malformed_frame_last_warning >= MALFORMED_FRAME_WARN_INTERVAL):
+            self.log.warning(
+                "Dropped malformed ESP3 frame (%s: %s) - a device sends telegrams that do "
+                "not match their RORG. Frame: %s (%d dropped since last report, %d total; "
+                "further drops within %d s are logged at DEBUG level)",
+                type(error).__name__, error, frame_hex, self._malformed_frames_unreported,
+                self._malformed_frames_dropped, MALFORMED_FRAME_WARN_INTERVAL)
+            self._malformed_frame_last_warning = now
+            self._malformed_frames_unreported = 0
+        else:
+            self.log.debug("Dropped malformed ESP3 frame (%s: %s): %s",
+                           type(error).__name__, error, frame_hex)
 
     def _check_timeout_on_application_level(self):
         # Copy of TCP2SerialCommunicator._check_timeout_on_application_level()
